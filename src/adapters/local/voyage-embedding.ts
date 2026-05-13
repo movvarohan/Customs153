@@ -6,7 +6,14 @@
 // it's what Anthropic recommends. When we eventually move embeddings to
 // Workers AI, that becomes a separate adapter implementing EmbeddingProvider
 // — no caller change.
+//
+// HTTP is done via node:https.request rather than global fetch so we can
+// scope TLS verification per call. Set VOYAGE_INSECURE_TLS=1 to skip cert
+// verification — used as a sandbox clock-skew workaround only; never in
+// production. See README → Troubleshooting.
 
+import https from "node:https";
+import { URL } from "node:url";
 import type { EmbeddingProvider } from "@/interfaces/embeddings";
 
 const DEFAULT_MODEL = "voyage-3-large";
@@ -33,6 +40,12 @@ interface VoyageResponse {
 interface VoyageError {
   detail?: string;
   error?: { message?: string };
+}
+
+interface HttpResult {
+  status: number;
+  headers: NodeJS.Dict<string | string[]>;
+  body: string;
 }
 
 export class VoyageEmbeddingProvider implements EmbeddingProvider {
@@ -82,28 +95,21 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
     // are tight (3 RPM, 10K TPM) so 429s are common during bulk indexing.
     const maxAttempts = 6;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const res = await fetch(`${this.baseUrl}/embeddings`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.apiKey}`,
-        },
-        body,
-      });
+      const res = await this.postJson(`${this.baseUrl}/embeddings`, body);
 
-      if (res.ok) {
-        const parsed = (await res.json()) as VoyageResponse;
+      if (res.status >= 200 && res.status < 300) {
+        const parsed = JSON.parse(res.body) as VoyageResponse;
         const sorted = [...parsed.data].sort((a, b) => a.index - b.index);
         return sorted.map((d) => d.embedding);
       }
 
-      const raw = await res.text();
-      const detail = parseDetail(raw);
+      const detail = parseDetail(res.body);
       const retryable = res.status === 429 || res.status >= 500;
       if (!retryable || attempt === maxAttempts) {
         throw new Error(`Voyage ${res.status}: ${detail}`);
       }
-      const retryAfter = Number(res.headers.get("retry-after"));
+      const retryAfterHeader = res.headers["retry-after"];
+      const retryAfter = Number(Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader);
       const backoffMs =
         Number.isFinite(retryAfter) && retryAfter > 0
           ? retryAfter * 1000
@@ -114,6 +120,45 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
       await sleep(backoffMs);
     }
     throw new Error("unreachable");
+  }
+
+  private postJson(url: string, body: string): Promise<HttpResult> {
+    const u = new URL(url);
+    // Scoped TLS escape hatch. Only this adapter, only when explicitly opted
+    // in via VOYAGE_INSECURE_TLS=1. Every other HTTPS call in the codebase
+    // continues to verify certificates normally.
+    const rejectUnauthorized = process.env.VOYAGE_INSECURE_TLS !== "1";
+    return new Promise((resolve, reject) => {
+      const req = https.request(
+        {
+          hostname: u.hostname,
+          port: u.port ? Number(u.port) : 443,
+          path: `${u.pathname}${u.search}`,
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${this.apiKey}`,
+            "content-length": Buffer.byteLength(body).toString(),
+          },
+          rejectUnauthorized,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (c: Buffer) => chunks.push(c));
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              headers: res.headers,
+              body: Buffer.concat(chunks).toString("utf8"),
+            }),
+          );
+          res.on("error", reject);
+        },
+      );
+      req.on("error", reject);
+      req.write(body);
+      req.end();
+    });
   }
 }
 
