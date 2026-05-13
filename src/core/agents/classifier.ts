@@ -70,6 +70,12 @@ const TOOL_INPUT_SCHEMA = {
         required: ["hts_code", "rejected_because"],
       },
     },
+    missing_inputs_for_precision: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Data not in the description that would tighten the 8-/10-digit pick (e.g. 'unit value in USD', 'exact material composition'). Empty array if nothing was missing.",
+    },
     confidence: {
       type: "string",
       enum: ["low", "medium", "high"],
@@ -82,6 +88,7 @@ const TOOL_INPUT_SCHEMA = {
     "reasoning",
     "citations",
     "alternative_codes_considered",
+    "missing_inputs_for_precision",
     "confidence",
   ],
 };

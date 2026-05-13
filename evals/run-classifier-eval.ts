@@ -9,6 +9,7 @@ import path from "node:path";
 import { z } from "zod";
 import { buildLocalContext } from "@/adapters/local";
 import { classify, type ClassifyTrace } from "@/core/agents/classifier";
+import { CLASSIFIER_PROMPT_VERSION } from "@/core/agents/prompts/classifier-system";
 import type { ClassificationResultT } from "@/core/schemas/classification";
 
 const GoldCase = z.object({
@@ -18,6 +19,9 @@ const GoldCase = z.object({
   notes: z.string(),
   source: z.string(),
   ambiguous: z.boolean(),
+  /** When true, any 8-digit code in acceptable_hts_8 counts as a match. */
+  disputed: z.boolean().default(false),
+  acceptable_hts_8: z.array(z.string()).default([]),
 });
 type GoldCaseT = z.infer<typeof GoldCase>;
 
@@ -74,8 +78,9 @@ async function main(): Promise<void> {
     .split("\n")
     .filter((l) => l.trim().length > 0);
   const cases = lines.map((l) => GoldCase.parse(JSON.parse(l)));
-  console.log(`loaded ${cases.length} gold cases`);
-  console.log(`model: ${ctx.config.defaultModel}\n`);
+  console.log(`loaded ${cases.length} gold cases (${cases.filter((c) => c.disputed).length} disputed)`);
+  console.log(`model: ${ctx.config.defaultModel}`);
+  console.log(`prompt version: ${CLASSIFIER_PROMPT_VERSION}\n`);
 
   const results: CaseResult[] = [];
   for (let i = 0; i < cases.length; i++) {
@@ -185,6 +190,15 @@ async function main(): Promise<void> {
         console.log(`    - ${a.hts_code}: ${a.rejected_because}`);
       }
     }
+    if (r.prediction!.missing_inputs_for_precision.length > 0) {
+      console.log("  missing inputs:");
+      for (const m of r.prediction!.missing_inputs_for_precision) {
+        console.log(`    - ${m}`);
+      }
+    }
+    if (r.case.disputed) {
+      console.log(`  disputed    : acceptable=[${r.case.acceptable_hts_8.join(", ")}]`);
+    }
     if (r.prediction!.validation_warning) {
       console.log(`  warning     : ${r.prediction!.validation_warning}`);
     }
@@ -203,6 +217,7 @@ async function main(): Promise<void> {
   const report = {
     timestamp,
     model: ctx.config.defaultModel,
+    prompt_version: CLASSIFIER_PROMPT_VERSION,
     n_cases: total,
     n_scored: scored.length,
     metrics: {
@@ -235,6 +250,12 @@ function scoreCase(
   const exp10 = c.expected_hts_10 ? stripDigits(c.expected_hts_10) : null;
   const exp8 = stripDigits(c.expected_hts_8);
 
+  // For disputed cases, any code in acceptable_hts_8 matches at 8-digit;
+  // 10-digit matching falls back to the primary expected_hts_10 only.
+  const acceptable8 = c.disputed
+    ? new Set([exp8, ...c.acceptable_hts_8.map((a) => stripDigits(a))])
+    : new Set([exp8]);
+
   const top3 = [pred8, ...pred.alternative_codes_considered.map((a) => stripDigits(a.hts_code).slice(0, 8))];
 
   const candidateCodes = new Set(trace.candidates.map((c) => c.htsCode));
@@ -251,8 +272,8 @@ function scoreCase(
     top3_8_digits: top3,
     matches: {
       top1_10: exp10 !== null && pred10 === exp10,
-      top1_8: pred8 === exp8,
-      top3_8: top3.some((p) => p === exp8),
+      top1_8: acceptable8.has(pred8),
+      top3_8: top3.some((p) => acceptable8.has(p)),
       chapter: pred8.slice(0, 2) === exp8.slice(0, 2),
     },
     citations_grounded: citationsGrounded,

@@ -42,6 +42,13 @@ export const ClassificationOutput = z.object({
   citations: z.array(z.string().min(4)).min(1),
   /** Up to 3 alternatives the model weighed, with the reason each was rejected. */
   alternative_codes_considered: z.array(AlternativeConsidered).max(3),
+  /**
+   * Data the description lacked that would tighten the 8-/10-digit pick.
+   * Examples: "unit value in USD (4202.21 splits at $20)",
+   * "exact material composition by weight", "intended end-use (athletic vs household)".
+   * Empty array if nothing was missing.
+   */
+  missing_inputs_for_precision: z.array(z.string()),
   confidence: ConfidenceLevel,
 });
 
