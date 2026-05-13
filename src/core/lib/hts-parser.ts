@@ -1,20 +1,17 @@
 // HTS parser. Takes raw rows from USITC's exportList JSON dump and produces
 // one chunk per tariff line (4-, 6-, 8- or 10-digit code), enriched with the
-// section, chapter, and indent-stack ancestor context so the embedding text
-// carries enough signal for retrieval.
+// section, chapter, indent-stack ancestor context, AND the legal section /
+// chapter notes (especially exclusionary clauses). The embedding text is
+// ordered so retrieval can disambiguate between competing chapters: full
+// hierarchy first → chunk description → exclusionary notes → background.
 //
-// The USITC dump is a flat ordered array of rows. Each row has:
-//   - htsno: the HTS code (formatted "XXXX", "XXXX.XX", "XXXX.XX.XX", or
-//     "XXXX.XX.XX.XX") — empty string for "superior" structural rows.
-//   - indent: the visual nesting level in the schedule (string, "0" at root).
-//   - description: the human-readable line text, often ending in ":".
-//   - superior: "true" on intermediate header rows.
-//   - general/special/other: duty rate text.
-//
-// USITC does NOT emit explicit "Section X" or "Chapter NN" rows, so chapter
-// context is derived from the first two digits of the htsno and section
-// context from a static chapter→section map. Legal section/chapter notes
-// are not in this dump and are left null here — see TODO at the bottom.
+// USITC does NOT emit explicit "Section X" or "Chapter NN" rows in the
+// exportList JSON, so chapter context is derived from the first two digits
+// of the htsno and section context from a static chapter→section map.
+// Legal notes come from the separate getChapterNotes / getSectionNotes
+// reststop endpoints — see src/core/lib/hts-notes.ts.
+
+import type { HtsNotesBundle } from "./hts-notes";
 
 export interface RawHtsRow {
   htsno?: string;
@@ -52,35 +49,34 @@ export interface HtsChunk {
   embeddingText: string;
 }
 
-export function parseHtsSchedule(rows: RawHtsRow[]): HtsChunk[] {
+export interface ParseOptions {
+  notes?: HtsNotesBundle;
+}
+
+export function parseHtsSchedule(rows: RawHtsRow[], opts: ParseOptions = {}): HtsChunk[] {
   const chunks: HtsChunk[] = [];
-  // Stack of ancestors at strictly-decreasing indent levels. Each entry may
-  // be a tariff line (with htsno) or a "superior" structural row.
   type StackEntry = { indent: number; htsno: string | null; description: string };
   let stack: StackEntry[] = [];
-  let currentChapter: string | null = null;
 
   for (const row of rows) {
     const indent = parseIndent(row.indent);
     const htsRaw = (row.htsno ?? "").trim();
     const desc = cleanDesc(row.description);
 
-    // Pop the stack down to entries strictly less indented than us.
     while (stack.length > 0 && stack[stack.length - 1]!.indent >= indent) {
       stack.pop();
     }
 
     if (htsRaw) {
-      // Tariff line. Push first so it's available as parent for deeper rows,
-      // and so the chunk-builder doesn't accidentally include itself as an
-      // ancestor.
       stack.push({ indent, htsno: htsRaw, description: desc });
 
       const level = digitLevelOf(htsRaw);
       if (level !== null) {
-        currentChapter = htsRaw.slice(0, 2);
-        const section = SECTION_FOR_CHAPTER[currentChapter] ?? null;
-        const ancestors = stack.slice(0, -1); // everything before this row
+        const chapter = htsRaw.slice(0, 2);
+        const section = SECTION_FOR_CHAPTER[chapter] ?? null;
+        const ancestors = stack.slice(0, -1);
+        const chapterNotes = opts.notes?.chapter.get(chapter) ?? null;
+        const sectionNotes = opts.notes?.section.get(chapter) ?? null;
 
         chunks.push({
           htsCode: htsRaw,
@@ -89,29 +85,47 @@ export function parseHtsSchedule(rows: RawHtsRow[]): HtsChunk[] {
           description: desc,
           parentHeading: level === 4 ? null : htsRaw.slice(0, 4),
           section,
-          chapter: currentChapter,
-          fullPath: buildFullPath({ section, chapter: currentChapter, ancestors, code: htsRaw, desc }),
-          sectionNotes: null,
-          chapterNotes: null,
+          chapter,
+          fullPath: buildFullPath({ section, chapter, ancestors, code: htsRaw, desc }),
+          sectionNotes,
+          chapterNotes,
           generalDuty: trimOrNull(row.general),
           units: row.units ?? [],
           embeddingText: buildEmbeddingText({
             section,
-            chapter: currentChapter,
+            chapter,
             ancestors,
             code: htsRaw,
             desc,
+            chapterNotes,
+            sectionNotes,
+            includeNotes: true,
           }),
         });
       }
     } else if (desc) {
-      // Superior / structural row — keep it on the stack so child tariff lines
-      // pick up its label (e.g. "Other:", "Of cotton:") as ancestor context.
       stack.push({ indent, htsno: null, description: desc });
     }
   }
 
   return chunks;
+}
+
+/**
+ * Build the lean embedding text for a chunk (no notes). Exposed for the
+ * with-vs-without-notes diagnostic in scripts/test-retrieval.ts.
+ */
+export function buildLeanEmbeddingText(chunk: HtsChunk): string {
+  // We rebuild from the chunk's own state without re-running the parser.
+  // The ancestor stack isn't stored on the chunk, so we use the fullPath as
+  // a fallback hierarchy descriptor.
+  const lines: string[] = [];
+  lines.push(`HTS ${chunk.htsCode}: ${chunk.description}`);
+  lines.push("");
+  lines.push(chunk.fullPath);
+  lines.push("");
+  lines.push(`Chapter ${chunk.chapter}${chunk.section ? ` (Section ${chunk.section})` : ""}`);
+  return lines.join("\n");
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -163,8 +177,21 @@ function buildFullPath(a: PathArgs): string {
   return segments.join(" > ");
 }
 
-function buildEmbeddingText(a: PathArgs): string {
+interface EmbedArgs extends PathArgs {
+  chapterNotes: string | null;
+  sectionNotes: string | null;
+  includeNotes: boolean;
+}
+
+// Per-chunk budgets for embedding text. Voyage tokenizes roughly 4 chars
+// per token, so 2400 chars ≈ 600 tokens fits the 400–700-token target.
+const CHAR_BUDGET_CHAPTER_NOTES = 900;
+const CHAR_BUDGET_SECTION_NOTES = 600;
+
+function buildEmbeddingText(a: EmbedArgs): string {
   const lines: string[] = [];
+
+  // (a) Full hierarchy path — most specific first.
   lines.push(`HTS ${a.code}: ${a.desc}`);
   const ancestorLines: string[] = [];
   for (const anc of a.ancestors) {
@@ -178,11 +205,25 @@ function buildEmbeddingText(a: PathArgs): string {
   }
   lines.push("");
   lines.push(`Chapter ${a.chapter}${a.section ? ` (Section ${a.section})` : ""}`);
+
+  // (c) Chapter notes — exclusionary content first per condense().
+  if (a.includeNotes && a.chapterNotes) {
+    lines.push("");
+    lines.push(`Chapter ${a.chapter} notes:`);
+    lines.push(a.chapterNotes.slice(0, CHAR_BUDGET_CHAPTER_NOTES));
+  }
+
+  // (d) Section notes — only if short enough not to crowd out chapter notes.
+  if (a.includeNotes && a.sectionNotes) {
+    lines.push("");
+    lines.push(`Section ${a.section ?? ""} notes:`);
+    lines.push(a.sectionNotes.slice(0, CHAR_BUDGET_SECTION_NOTES));
+  }
+
   return lines.join("\n");
 }
 
 // Static HTS chapter → section map. Section I covers chapters 01–05, etc.
-// Source: USITC HTS table of contents (sections I–XXII).
 const SECTION_FOR_CHAPTER: Record<string, string> = (() => {
   const ranges: Array<[string, number, number]> = [
     ["I", 1, 5],
@@ -216,9 +257,3 @@ const SECTION_FOR_CHAPTER: Record<string, string> = (() => {
   }
   return out;
 })();
-
-// TODO(CLAUDE.md §2 "HTS classification agent"):
-//   The USITC legal section and chapter notes are NOT in this JSON dump.
-//   Pull them from the official Notes PDFs (or scrape via ctx.browser from
-//   hts.usitc.gov), index them as their own chunks, and use them as
-//   retrieval context when applying GRI 1.

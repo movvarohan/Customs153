@@ -16,3 +16,4 @@ data/cross-rulings/*
 !data/cross-rulings/.gitkeep
 data/hts/raw/*
 data/hts/parsed/*
+data/hts/notes/*
