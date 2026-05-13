@@ -108,9 +108,9 @@ async function renderPdf(opts: RenderOptions, f: PSCFindingsT): Promise<void> {
   }
   metricY = boxTop + 32;
   for (const [label, value] of metricsRight) {
-    doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(label, 310, metricY, { width: 250 });
+    doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(label, 310, metricY, { width: 248 });
     const isMoney = label.startsWith("Total");
-    doc.fillColor(isMoney ? ACCENT : NAVY).font("Helvetica-Bold").fontSize(isMoney ? 13 : 11).text(value, 310, metricY + 11, { width: 250 });
+    doc.fillColor(isMoney ? ACCENT : NAVY).font("Helvetica-Bold").fontSize(isMoney ? 13 : 11).text(value, 310, metricY + 11, { width: 248 });
     metricY += 24;
   }
 
