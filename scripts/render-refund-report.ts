@@ -266,7 +266,7 @@ async function renderPdf(opts: RenderOptions, f: PSCFindingsT): Promise<void> {
         { width: 504 },
       );
       doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(
-        `filed ${o.hts_filed_8}  →  our ${o.hts_predicted_8}  ·  recoverable ${fmtMoney(o.recoverable_amount_usd_cents)}  ·  confidence ${o.our_confidence}`,
+        `filed ${o.hts_filed_8}  ->  our ${o.hts_predicted_8}  ·  recoverable ${fmtMoney(o.recoverable_amount_usd_cents)}  ·  confidence ${o.our_confidence}`,
         { width: 504 },
       );
       doc.moveDown(0.4);
