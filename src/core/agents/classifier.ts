@@ -30,27 +30,20 @@ const MAX_OUTPUT_TOKENS = 2048;
 const TOOL_NAME = "report_classification";
 
 // JSON Schema for Anthropic tool use. Kept in lockstep with ClassificationOutput.
+//
+// Field order matters: Claude fills tool inputs in the order they appear in
+// `properties`, so the most-reasoning-first ordering gives the model time to
+// think before committing to a code. We had a failure in v2 ([39] wool scarf)
+// where the reasoning string identified 6117 but the prediction was 6214 —
+// hts_code came first in the schema, so the model wrote it before working
+// through the analysis. New order: reasoning → citations → alternatives →
+// missing inputs → confidence → gri_rule → hts_code_8 → hts_code (last).
 const TOOL_INPUT_SCHEMA = {
   type: "object" as const,
   properties: {
-    hts_code: {
-      type: "string",
-      description: "10-digit HTS code in dotted XXXX.XX.XX.XX form",
-      pattern: "^\\d{4}\\.\\d{2}\\.\\d{2}\\.\\d{2}$",
-    },
-    hts_code_8: {
-      type: "string",
-      description: "Same code truncated to 8 digits, dotted XXXX.XX.XX",
-      pattern: "^\\d{4}\\.\\d{2}\\.\\d{2}$",
-    },
-    gri_rule_applied: {
-      type: "string",
-      enum: ["1", "2(a)", "2(b)", "3(a)", "3(b)", "3(c)", "4", "5(a)", "5(b)", "6"],
-      description: "The GRI rule that decided this classification",
-    },
     reasoning: {
       type: "string",
-      description: "3–5 sentence legal explanation",
+      description: "Step-by-step legal reasoning following the decision procedure in the system prompt. Quote section/chapter notes verbatim when applying them. Write this BEFORE committing to a code.",
     },
     citations: {
       type: "array",
@@ -80,16 +73,31 @@ const TOOL_INPUT_SCHEMA = {
       type: "string",
       enum: ["low", "medium", "high"],
     },
+    gri_rule_applied: {
+      type: "string",
+      enum: ["1", "2(a)", "2(b)", "3(a)", "3(b)", "3(c)", "4", "5(a)", "5(b)", "6"],
+      description: "The GRI rule that decided this classification",
+    },
+    hts_code_8: {
+      type: "string",
+      description: "Same code truncated to 8 digits, dotted XXXX.XX.XX",
+      pattern: "^\\d{4}\\.\\d{2}\\.\\d{2}$",
+    },
+    hts_code: {
+      type: "string",
+      description: "10-digit HTS code in dotted XXXX.XX.XX.XX form. Write this LAST, after the reasoning. It must be consistent with the code(s) you cited in `reasoning`.",
+      pattern: "^\\d{4}\\.\\d{2}\\.\\d{2}\\.\\d{2}$",
+    },
   },
   required: [
-    "hts_code",
-    "hts_code_8",
-    "gri_rule_applied",
     "reasoning",
     "citations",
     "alternative_codes_considered",
     "missing_inputs_for_precision",
     "confidence",
+    "gri_rule_applied",
+    "hts_code_8",
+    "hts_code",
   ],
 };
 
@@ -121,7 +129,32 @@ export interface ClassifyTrace {
     invalidCitations: string[];
     invalidHtsCode: boolean;
   }>;
+  /** Non-null when the predicted hts_code's heading isn't referenced in reasoning text. */
+  reasoning_consistency_warning: string | null;
   result: ClassificationResultT;
+}
+
+/**
+ * Heuristic check that the predicted hts_code is consistent with the reasoning
+ * text. Extracts every HTS-code-shaped token from the reasoning (XXXX,
+ * XXXX.XX, XXXX.XX.XX, XXXX.XX.XX.XX) and asserts the predicted 4-digit
+ * heading appears among them. Returns null if consistent, else a warning
+ * string. Heuristic only — never blocks the classification.
+ */
+function checkReasoningConsistency(reasoning: string, predictedHtsCode: string): string | null {
+  const codeRe = /\b\d{4}(?:\.\d{2}){0,3}\b/g;
+  const mentioned = new Set<string>();
+  for (const m of reasoning.matchAll(codeRe)) {
+    mentioned.add(m[0]);
+  }
+  if (mentioned.size === 0) {
+    return "reasoning text mentions no HTS codes — cannot verify consistency";
+  }
+  const predictedHeading = predictedHtsCode.slice(0, 4);
+  for (const code of mentioned) {
+    if (code.startsWith(predictedHeading)) return null;
+  }
+  return `predicted hts_code ${predictedHtsCode} (heading ${predictedHeading}) does not appear in reasoning; reasoning mentions: ${[...mentioned].slice(0, 8).join(", ")}`;
 }
 
 export async function classify(
@@ -165,6 +198,7 @@ export async function classify(
     })),
     userMessage,
     attempts: [],
+    reasoning_consistency_warning: null,
     result: null as unknown as ClassificationResultT, // filled below
   };
 
@@ -256,7 +290,14 @@ export async function classify(
 
   trace.result = validatedResult;
 
-  // ── 4. Persist trace to audit_log ──────────────────────────────────────
+  // ── 4. Heuristic reasoning-vs-prediction consistency check ─────────────
+  // Catches cases like the v2 [39] wool scarf failure where the model's
+  // reasoning identified 6117 but its hts_code field was 6214. Doesn't
+  // block — just surfaces a warning we can act on later.
+  const warning = checkReasoningConsistency(validatedResult.reasoning, validatedResult.hts_code);
+  trace.reasoning_consistency_warning = warning;
+
+  // ── 5. Persist trace to audit_log ──────────────────────────────────────
   await persistAuditLog(ctx, classificationId, model, trace);
 
   return { result: validatedResult, trace };

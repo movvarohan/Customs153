@@ -11,7 +11,7 @@
 //   - Explicit instruction that gri_rule_applied must reflect the actual
 //     decisive rule (v1 collapsed everything to GRI 1 in the eval).
 
-export const CLASSIFIER_PROMPT_VERSION = "v2-2026-05-13";
+export const CLASSIFIER_PROMPT_VERSION = "v2.1-2026-05-13";
 
 export const CLASSIFIER_SYSTEM_PROMPT = `You are a US customs classification specialist working under CBP's "reasonable care" standard. Your task: assign one 10-digit HTS code to a product the importer described.
 

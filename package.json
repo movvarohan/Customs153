@@ -14,17 +14,21 @@
     "hts:test": "tsx scripts/test-retrieval.ts",
     "index:cross": "tsx scripts/index-cross.ts",
     "seed:rates": "tsx scripts/seed-tariff-rates.ts",
-    "eval:classifier": "tsx evals/run-classifier-eval.ts"
+    "eval:classifier": "tsx evals/run-classifier-eval.ts",
+    "process-invoice": "tsx scripts/process-invoice.ts",
+    "generate-samples": "tsx scripts/generate-sample-invoices.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
     "@hono/node-server": "^1.13.0",
     "@libsql/client": "^0.14.0",
     "hono": "^4.7.0",
+    "pdfkit": "^0.18.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/pdfkit": "^0.17.6",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }
