@@ -11,23 +11,28 @@
 //      outside the window — still counted, but flagged "protest required
 //      instead" in notes.
 //
-// Audit-logs each line individually so a broker can trace every claim.
+// Classification runs with bounded concurrency (default 5). Each line's
+// audit trace is persisted by classify() itself; this agent persists a
+// single rollup row for the whole analysis.
 
 import { randomUUID } from "node:crypto";
 import type { AppContext } from "@/core/app-context";
 import {
   type HistoricalEntriesT,
-  type HistoricalEntryT,
-  type HistoricalLineItemT,
   type PSCFindingsT,
   type RefundOpportunityT,
   type UncertainCaseT,
 } from "@/core/schemas/refund";
 import { classify } from "./classifier";
 import { calculateDuty } from "./duty-calculator";
+import type { ClassificationResultT } from "@/core/schemas/classification";
+import { mapWithConcurrency } from "@/core/lib/concurrency";
 
 /** Days in the PSC window (CBP rule of thumb — 314 days post-liquidation ≈ 1y from entry). */
 const PSC_WINDOW_DAYS = 11 * 30;
+/** Default concurrency for the classifier fan-out. Cap kept conservative
+ *  to stay comfortably inside Anthropic rate limits. */
+const DEFAULT_CONCURRENCY = 5;
 
 function stripDots(code: string): string {
   return code.replace(/\D/g, "");
@@ -35,7 +40,7 @@ function stripDots(code: string): string {
 
 function toEightDigit(code: string): string {
   const digits = stripDots(code).slice(0, 8);
-  if (digits.length < 8) return code; // can't normalize, return as-is
+  if (digits.length < 8) return code;
   return `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}`;
 }
 
@@ -45,7 +50,7 @@ function daysBetween(a: Date, b: Date): number {
 
 export interface FindRefundsResult {
   findings: PSCFindingsT;
-  /** Per-line audit-grade traces — same data as audit_log payloads for inspection. */
+  /** Per-line audit-grade traces. */
   perLineTraces: Array<{
     entry_number: string;
     line_index: number;
@@ -55,15 +60,69 @@ export interface FindRefundsResult {
     duty_predicted_usd_cents: number;
     is_agreement: boolean;
     is_opportunity: boolean;
+    error?: string;
   }>;
+}
+
+/** Flat tuple per line item — what we fan out over. */
+interface LineTask {
+  entry_number: string;
+  entry_date: string;
+  line_index: number;
+  country_of_origin: string;
+  description: string;
+  quantity: number;
+  unit_value_usd_cents: number;
+  total_value_usd_cents: number;
+  duty_paid_usd_cents: number;
+  hts_code_as_filed: string;
+  psc_eligible: boolean;
 }
 
 export async function findRefundOpportunities(
   ctx: AppContext,
   historical: HistoricalEntriesT,
-  options: { asOf?: Date } = {},
+  options: { asOf?: Date; concurrency?: number } = {},
 ): Promise<FindRefundsResult> {
   const asOf = options.asOf ?? new Date();
+  const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+
+  // ── Flatten ─────────────────────────────────────────────────────────────
+  const tasks: LineTask[] = [];
+  let outsidePsc = 0;
+  for (const entry of historical.entries) {
+    const ageDays = daysBetween(new Date(entry.entry_date), asOf);
+    const pscEligible = ageDays <= PSC_WINDOW_DAYS;
+    if (!pscEligible) outsidePsc++;
+    entry.line_items.forEach((line, i) => {
+      tasks.push({
+        entry_number: entry.entry_number,
+        entry_date: entry.entry_date,
+        line_index: i,
+        country_of_origin: entry.country_of_origin,
+        description: line.description,
+        quantity: line.quantity,
+        unit_value_usd_cents: line.unit_value_usd_cents,
+        total_value_usd_cents: line.total_value_usd_cents,
+        duty_paid_usd_cents: line.duty_paid_usd_cents,
+        hts_code_as_filed: line.hts_code_as_filed,
+        psc_eligible: pscEligible,
+      });
+    });
+  }
+
+  // ── Fan-out: classify in parallel ───────────────────────────────────────
+  const classified = await mapWithConcurrency(tasks, concurrency, async (t) => {
+    const { result } = await classify(ctx, {
+      description: t.description,
+      quantity: t.quantity,
+      unit_value_usd: t.unit_value_usd_cents / 100,
+      country_of_origin: t.country_of_origin,
+    });
+    return result;
+  });
+
+  // ── Assemble (sequential — fast: duty calc + bookkeeping) ──────────────
   const opportunities: RefundOpportunityT[] = [];
   const uncertain: UncertainCaseT[] = [];
   const traces: FindRefundsResult["perLineTraces"] = [];
@@ -71,98 +130,95 @@ export async function findRefundOpportunities(
 
   let agreements = 0;
   let disagreements = 0;
-  let outsidePsc = 0;
-  let totalLines = 0;
+  let classifierErrors = 0;
 
-  for (const entry of historical.entries) {
-    const entryDate = new Date(entry.entry_date);
-    const ageDays = daysBetween(entryDate, asOf);
-    const pscEligible = ageDays <= PSC_WINDOW_DAYS;
-    if (!pscEligible) outsidePsc++;
+  for (let idx = 0; idx < tasks.length; idx++) {
+    const t = tasks[idx]!;
+    const settled = classified[idx]!;
 
-    for (let i = 0; i < entry.line_items.length; i++) {
-      const line = entry.line_items[i]!;
-      totalLines++;
-
-      // Re-classify. Pass description + quantity + unit value + country —
-      // anything except hts_code_as_filed (the agent must not see that).
-      const { result: predicted } = await classify(ctx, {
-        description: line.description,
-        quantity: line.quantity,
-        unit_value_usd: line.unit_value_usd_cents / 100,
-        country_of_origin: entry.country_of_origin,
-      });
-
-      const filed8 = toEightDigit(line.hts_code_as_filed);
-      const predicted8 = predicted.hts_code_8;
-      const isAgreement = stripDots(filed8) === stripDots(predicted8);
-
-      // Compute duty under both codes — same value, same country, same mode.
-      // Use the broker's reported duty_paid for "filed" rather than recomputing
-      // (production reality: broker math may include things we don't model, so
-      // we honor what was actually paid).
-      const dutyFiledCents = line.duty_paid_usd_cents;
-      const dutyPredictedCalc = await calculateDuty(ctx, {
-        hts_code: predicted.hts_code,
-        country_of_origin: entry.country_of_origin,
-        customs_value_usd_cents: line.total_value_usd_cents,
-        transport_mode: "ocean",
-      });
-      const dutyPredictedCents = dutyPredictedCalc.total_duty_usd_cents;
-      const recoverable = dutyFiledCents - dutyPredictedCents;
-      const isOpportunity = !isAgreement && recoverable > 0;
-
-      if (isAgreement) agreements++;
-      else disagreements++;
-
+    if (settled.status === "rejected") {
+      classifierErrors++;
+      const msg = settled.reason instanceof Error ? settled.reason.message : String(settled.reason);
       traces.push({
-        entry_number: entry.entry_number,
-        line_index: i,
-        classified_hts: predicted.hts_code,
-        classified_confidence: predicted.confidence,
-        duty_filed_usd_cents: dutyFiledCents,
-        duty_predicted_usd_cents: dutyPredictedCents,
-        is_agreement: isAgreement,
-        is_opportunity: isOpportunity,
+        entry_number: t.entry_number,
+        line_index: t.line_index,
+        classified_hts: "",
+        classified_confidence: "low",
+        duty_filed_usd_cents: t.duty_paid_usd_cents,
+        duty_predicted_usd_cents: 0,
+        is_agreement: false,
+        is_opportunity: false,
+        error: msg,
       });
-
-      if (!isOpportunity) continue;
-
-      const reasoningSummary = summarize(predicted.reasoning);
-
-      if (predicted.confidence === "low") {
-        uncertain.push({
-          entry_number: entry.entry_number,
-          entry_date: entry.entry_date,
-          line_index: i,
-          line_description: line.description,
-          hts_filed: line.hts_code_as_filed,
-          hts_predicted: predicted.hts_code,
-          reason: `low-confidence disagreement; broker review recommended before action. Reasoning: ${reasoningSummary}`,
-        });
-        continue;
-      }
-
-      opportunities.push({
-        entry_number: entry.entry_number,
-        entry_date: entry.entry_date,
-        line_index: i,
-        line_description: line.description,
-        hts_filed: line.hts_code_as_filed,
-        hts_predicted: predicted.hts_code,
-        hts_predicted_8: predicted8,
-        hts_filed_8: filed8,
-        duty_paid_usd_cents: dutyFiledCents,
-        duty_predicted_usd_cents: dutyPredictedCents,
-        recoverable_amount_usd_cents: recoverable,
-        our_confidence: predicted.confidence,
-        reasoning_summary: reasoningSummary,
-        psc_eligible: pscEligible,
-      });
+      continue;
     }
+
+    const predicted: ClassificationResultT = settled.value;
+    const filed8 = toEightDigit(t.hts_code_as_filed);
+    const predicted8 = predicted.hts_code_8;
+    const isAgreement = stripDots(filed8) === stripDots(predicted8);
+
+    // Use broker's reported duty_paid for "filed"; recompute for "predicted".
+    const dutyPredictedCalc = await calculateDuty(ctx, {
+      hts_code: predicted.hts_code,
+      country_of_origin: t.country_of_origin,
+      customs_value_usd_cents: t.total_value_usd_cents,
+      transport_mode: "ocean",
+    });
+    const dutyPredictedCents = dutyPredictedCalc.total_duty_usd_cents;
+    const recoverable = t.duty_paid_usd_cents - dutyPredictedCents;
+    const isOpportunity = !isAgreement && recoverable > 0;
+
+    if (isAgreement) agreements++;
+    else disagreements++;
+
+    traces.push({
+      entry_number: t.entry_number,
+      line_index: t.line_index,
+      classified_hts: predicted.hts_code,
+      classified_confidence: predicted.confidence,
+      duty_filed_usd_cents: t.duty_paid_usd_cents,
+      duty_predicted_usd_cents: dutyPredictedCents,
+      is_agreement: isAgreement,
+      is_opportunity: isOpportunity,
+    });
+
+    if (!isOpportunity) continue;
+
+    const reasoningSummary = summarize(predicted.reasoning);
+
+    if (predicted.confidence === "low") {
+      uncertain.push({
+        entry_number: t.entry_number,
+        entry_date: t.entry_date,
+        line_index: t.line_index,
+        line_description: t.description,
+        hts_filed: t.hts_code_as_filed,
+        hts_predicted: predicted.hts_code,
+        reason: `low-confidence disagreement; broker review recommended before action. Reasoning: ${reasoningSummary}`,
+      });
+      continue;
+    }
+
+    opportunities.push({
+      entry_number: t.entry_number,
+      entry_date: t.entry_date,
+      line_index: t.line_index,
+      line_description: t.description,
+      hts_filed: t.hts_code_as_filed,
+      hts_predicted: predicted.hts_code,
+      hts_predicted_8: predicted8,
+      hts_filed_8: filed8,
+      duty_paid_usd_cents: t.duty_paid_usd_cents,
+      duty_predicted_usd_cents: dutyPredictedCents,
+      recoverable_amount_usd_cents: recoverable,
+      our_confidence: predicted.confidence,
+      reasoning_summary: reasoningSummary,
+      psc_eligible: t.psc_eligible,
+    });
   }
 
-  // ── Aggregates ─────────────────────────────────────────────────────────
+  // ── Aggregates ──────────────────────────────────────────────────────────
   opportunities.sort((a, b) => b.recoverable_amount_usd_cents - a.recoverable_amount_usd_cents);
 
   const totalRecov = opportunities.reduce((s, o) => s + o.recoverable_amount_usd_cents, 0);
@@ -171,7 +227,6 @@ export async function findRefundOpportunities(
     if (o.our_confidence === "high") cb.high_usd_cents += o.recoverable_amount_usd_cents;
     else if (o.our_confidence === "medium") cb.medium_usd_cents += o.recoverable_amount_usd_cents;
   }
-  // (Low confidence is in uncertain_cases, not opportunities — by design.)
 
   if (outsidePsc > 0) {
     notes.push(
@@ -183,6 +238,11 @@ export async function findRefundOpportunities(
       `${uncertain.length} disagreements were low-confidence — listed in uncertain_cases for human review before any filing.`,
     );
   }
+  if (classifierErrors > 0) {
+    notes.push(
+      `${classifierErrors} line items errored during classification (see perLineTraces[*].error). They are not counted in agreements/disagreements and require manual re-run.`,
+    );
+  }
   notes.push(
     "Recoverable amounts assume CBP accepts the re-classification. Production filing should attach the agent's full reasoning trace from audit_log as the reasonable-care basis.",
   );
@@ -191,7 +251,7 @@ export async function findRefundOpportunities(
     importer: historical.importer,
     analyzed_at: asOf.toISOString(),
     total_entries_analyzed: historical.entries.length,
-    total_line_items_analyzed: totalLines,
+    total_line_items_analyzed: tasks.length,
     agreements,
     disagreements,
     outside_psc_window: outsidePsc,
@@ -208,7 +268,6 @@ export async function findRefundOpportunities(
 }
 
 function summarize(reasoning: string): string {
-  // First two sentences. Keep it short for the broker table.
   const sents = reasoning.split(/(?<=[.!?])\s+/);
   return sents.slice(0, 2).join(" ").slice(0, 280);
 }
@@ -237,4 +296,4 @@ async function persistAuditLog(
     .run();
 }
 
-export type { HistoricalEntryT as HistoricalEntry, HistoricalLineItemT as HistoricalLineItem };
+export type { HistoricalEntryT as HistoricalEntry, HistoricalLineItemT as HistoricalLineItem } from "@/core/schemas/refund";

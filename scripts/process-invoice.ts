@@ -14,6 +14,10 @@ import { buildLocalContext } from "@/adapters/local";
 import { extract } from "@/core/agents/extractor";
 import { classify } from "@/core/agents/classifier";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
+import { mapWithConcurrency } from "@/core/lib/concurrency";
+
+/** Default Anthropic-call concurrency for the per-line classifier fan-out. */
+const CLASSIFY_CONCURRENCY = Number(process.env.CLASSIFY_CONCURRENCY ?? 5);
 import type { ExtractionResultT, ExtractedLineItemT } from "@/core/schemas/extraction";
 import type { ClassificationResultT } from "@/core/schemas/classification";
 
@@ -83,22 +87,36 @@ async function main(): Promise<void> {
     console.log(`  ⚠ vague descriptions on lines: ${extraction.requires_clarification.map((c) => c.line_index).join(", ")}`);
   }
 
-  // ── Step 2: classify each line item ────────────────────────────────────
-  console.log(`\n→ classifying ${extraction.line_items.length} line items…`);
+  // ── Step 2: classify each line item (parallel, concurrency capped) ─────
+  console.log(`\n→ classifying ${extraction.line_items.length} line items (concurrency=${CLASSIFY_CONCURRENCY})…`);
+  const classifyT0 = Date.now();
+  const settled = await mapWithConcurrency(
+    extraction.line_items,
+    CLASSIFY_CONCURRENCY,
+    async (li) => {
+      const coo = li.country_of_origin ?? extraction.country_of_origin;
+      const t0 = Date.now();
+      const { result } = await classify(ctx, {
+        description: li.description,
+        quantity: li.quantity,
+        unit_value_usd: li.unit_value / 100,
+        ...(coo ? { country_of_origin: coo } : {}),
+      });
+      return { result, latency_ms: Date.now() - t0 };
+    },
+  );
+  const classifyMsSum = Date.now() - classifyT0;
   const lines: ProcessedLine[] = [];
-  let classifyMsSum = 0;
-  for (let i = 0; i < extraction.line_items.length; i++) {
+  for (let i = 0; i < settled.length; i++) {
+    const s = settled[i]!;
     const li = extraction.line_items[i]!;
-    const tc0 = Date.now();
-    const coo = li.country_of_origin ?? extraction.country_of_origin;
-    const { result } = await classify(ctx, {
-      description: li.description,
-      quantity: li.quantity,
-      unit_value_usd: li.unit_value / 100,
-      ...(coo ? { country_of_origin: coo } : {}),
-    });
-    const dur = Date.now() - tc0;
-    classifyMsSum += dur;
+    if (s.status === "rejected") {
+      const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
+      process.stdout.write(`  [${String(i + 1).padStart(2)}/${extraction.line_items.length}] FAILED ${msg.slice(0, 70)}\n`);
+      continue;
+    }
+    const result = s.value.result;
+    const dur = s.value.latency_ms;
     lines.push({ line_index: i, line: li, classification: result, classification_latency_ms: dur });
     process.stdout.write(`  [${String(i + 1).padStart(2)}/${extraction.line_items.length}] ${result.hts_code_8} (${result.confidence}) ${dur}ms\n`);
   }
@@ -129,8 +147,8 @@ async function main(): Promise<void> {
   console.log(`Invoice total: ${(extraction.total_value / 100).toFixed(2)} ${extraction.currency}    →    ${usdTotal}`);
   console.log("─".repeat(120));
   console.log(`Wall time:      ${wallMs} ms`);
-  console.log(`  extraction:   ${extractMs} ms`);
-  console.log(`  classification: ${classifyMsSum} ms (${lines.length} lines, avg ${Math.round(classifyMsSum / Math.max(1, lines.length))} ms/line)`);
+  console.log(`  extraction:    ${extractMs} ms`);
+  console.log(`  classification: ${classifyMsSum} ms wall (${lines.length} lines @ concurrency=${CLASSIFY_CONCURRENCY})`);
 
   // ── Step 4: persist ────────────────────────────────────────────────────
   const processed: ProcessedDocument = {

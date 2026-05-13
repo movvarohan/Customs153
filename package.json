@@ -18,7 +18,8 @@
     "process-invoice": "tsx scripts/process-invoice.ts",
     "generate-samples": "tsx scripts/generate-sample-invoices.ts",
     "generate-entries": "tsx scripts/generate-sample-entries.ts",
-    "find-refunds": "tsx scripts/find-refunds.ts"
+    "find-refunds": "tsx scripts/find-refunds.ts",
+    "render-refund-report": "tsx scripts/render-refund-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
