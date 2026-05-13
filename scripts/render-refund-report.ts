@@ -289,17 +289,29 @@ async function renderPdf(opts: RenderOptions, f: PSCFindingsT): Promise<void> {
     }
   }
 
-  // Page numbers
+  // Page numbers — written in a second pass AFTER all content layout is
+  // done, so the count reflects the final physical page total. Crucial
+  // detail: pdfkit's doc.text() advances y after writing, and if that
+  // advance crosses the page boundary pdfkit auto-paginates. Earlier
+  // versions of this footer loop produced 12 physical pages when the
+  // content fit in 6, all stamped "X / 6", because the footer write on
+  // page N created page N+1 as a side effect. Two safeguards:
+  //   1. lineBreak:false suppresses the y-advance, so the footer can't
+  //      create a new page as a side effect.
+  //   2. We snapshot start+count once into TOTAL_PAGES and never look at
+  //      the live range during the loop.
   const range = doc.bufferedPageRange();
-  for (let i = 0; i < range.count; i++) {
-    doc.switchToPage(i);
+  const totalPages = range.count;
+  for (let i = 0; i < totalPages; i++) {
+    doc.switchToPage(range.start + i);
     doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(
-      `${i + 1} / ${range.count}`,
+      `${i + 1} / ${totalPages}`,
       54,
       750,
-      { width: 504, align: "right" },
+      { width: 504, align: "right", lineBreak: false },
     );
   }
+  doc.flushPages();
 
   doc.end();
   await new Promise<void>((resolve, reject) => {
