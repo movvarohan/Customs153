@@ -14,7 +14,14 @@ import { VoyageEmbeddingProvider } from "@/adapters/local/voyage-embedding";
 import type { VectorRecord } from "@/interfaces/vector-store";
 
 const RAW_PATH = "data/hts/raw/hts-2026.json";
-const BATCH_SIZE = 128;
+// Defaults sized for Voyage's free tier (3 RPM, 10K TPM). With a paid account
+// raise HTS_BATCH_SIZE to 128 and HTS_BATCH_PAUSE_MS to 0.
+const BATCH_SIZE = Number(process.env.HTS_BATCH_SIZE ?? 64);
+const BATCH_PAUSE_MS = Number(process.env.HTS_BATCH_PAUSE_MS ?? 21_000);
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 async function main(): Promise<void> {
   const voyageKey = process.env.VOYAGE_API_KEY;
@@ -30,8 +37,18 @@ async function main(): Promise<void> {
   console.log(`  ${rows.length} raw rows`);
 
   console.log("parsing…");
-  const chunks = parseHtsSchedule(rows);
-  console.log(`  ${chunks.length} tariff-line chunks`);
+  const allChunks = parseHtsSchedule(rows);
+  console.log(`  ${allChunks.length} tariff-line chunks`);
+
+  // Optional digit-level filter for paced indexing under Voyage's free tier
+  // (3 RPM / 10K TPM). Setting HTS_MAX_LEVEL=6 indexes only 4- and 6-digit
+  // chunks (~3k chunks vs ~27k full) so the sanity-check is feasible without
+  // a paid Voyage account.
+  const maxLevel = Number(process.env.HTS_MAX_LEVEL ?? 10);
+  const chunks = allChunks.filter((c) => c.digitLevel <= maxLevel);
+  if (chunks.length !== allChunks.length) {
+    console.log(`  filtered to digitLevel<=${maxLevel}: ${chunks.length} chunks`);
+  }
 
   const vectorPath = path.join(dataDir, "vectors/hts.json");
   // Start fresh so a re-index with a different embedding model doesn't leave
@@ -67,6 +84,7 @@ async function main(): Promise<void> {
     const last = batch[batch.length - 1]!;
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`  ${done}/${chunks.length} (${pct}%, last=${last.htsCode}, ${elapsed}s)`);
+    if (BATCH_PAUSE_MS > 0 && done < chunks.length) await sleep(BATCH_PAUSE_MS);
   }
   const seconds = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`done in ${seconds}s — index written to ${vectorPath}`);

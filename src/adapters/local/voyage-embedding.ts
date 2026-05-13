@@ -77,30 +77,55 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
       truncation: true,
     });
 
-    const res = await fetch(`${this.baseUrl}/embeddings`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.apiKey}`,
-      },
-      body,
-    });
+    // Retry policy: 429 (rate limit) and 5xx are retryable with exponential
+    // backoff that respects Retry-After when present. Free-tier Voyage caps
+    // are tight (3 RPM, 10K TPM) so 429s are common during bulk indexing.
+    const maxAttempts = 6;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const res = await fetch(`${this.baseUrl}/embeddings`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.apiKey}`,
+        },
+        body,
+      });
 
-    if (!res.ok) {
-      const raw = await res.text();
-      let detail = raw;
-      try {
-        const parsed = JSON.parse(raw) as VoyageError;
-        detail = parsed.error?.message ?? parsed.detail ?? raw;
-      } catch {
-        /* keep raw */
+      if (res.ok) {
+        const parsed = (await res.json()) as VoyageResponse;
+        const sorted = [...parsed.data].sort((a, b) => a.index - b.index);
+        return sorted.map((d) => d.embedding);
       }
-      throw new Error(`Voyage ${res.status}: ${detail}`);
-    }
 
-    const parsed = (await res.json()) as VoyageResponse;
-    // Voyage returns data sorted by index; sort defensively before mapping.
-    const sorted = [...parsed.data].sort((a, b) => a.index - b.index);
-    return sorted.map((d) => d.embedding);
+      const raw = await res.text();
+      const detail = parseDetail(raw);
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt === maxAttempts) {
+        throw new Error(`Voyage ${res.status}: ${detail}`);
+      }
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const backoffMs =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : Math.min(60_000, 2000 * 2 ** (attempt - 1));
+      console.warn(
+        `[voyage] ${res.status} on attempt ${attempt}/${maxAttempts}; sleeping ${backoffMs}ms`,
+      );
+      await sleep(backoffMs);
+    }
+    throw new Error("unreachable");
   }
+}
+
+function parseDetail(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as VoyageError;
+    return parsed.error?.message ?? parsed.detail ?? raw;
+  } catch {
+    return raw;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
