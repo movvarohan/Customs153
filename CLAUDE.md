@@ -86,25 +86,61 @@ Every classification, every duty calculation, every change is logged with timest
 5. Recurring: Each new shipment runs through the pipeline, broker review, and filing within hours instead of days.
 6. Retention: Proactive tariff monitoring generates additional savings over time. Their per-customer SKU database becomes increasingly valuable.
 
-## Stack
+## Architecture: local-first, Cloudflare-later
 
-- **Cloudflare Workers** (TypeScript, Hono router) for backend APIs
+We build behind interfaces from day one so the eventual move to Cloudflare is a port, not a rewrite. Today we run on Node + SQLite + the filesystem. Later we add a `src/adapters/cloudflare/` directory and a `src/entry/worker.ts`. The business logic in `src/core/` does not change.
+
+```
+src/
+├── core/                # pure business logic; depends only on interfaces/
+│   ├── agents/          # extractor, classifier, duty-calculator, psc-finder, tariff-monitor
+│   ├── routes/          # Hono routes; take AppContext, runtime-agnostic
+│   ├── lib/             # retrieval, citations, anthropic wrapper
+│   ├── types/           # domain entities (Shipment, LineItem, Classification, …)
+│   ├── schemas/         # Zod schemas for LLM output / external boundaries
+│   └── app-context.ts   # the bag of injected adapters every agent receives
+├── interfaces/          # Database, BlobStorage, VectorStore, KeyValueCache,
+│                        # BackgroundQueue, EmbeddingProvider, BrowserAutomation
+├── adapters/
+│   ├── local/           # SQLite (libsql), filesystem, in-memory cache + queue,
+│                        # local vector store, stub embeddings + browser
+│   └── cloudflare/      # added later: D1, R2, Vectorize, KV, Queues, Browser Rendering
+└── entry/
+    ├── cli.ts           # current entry — `tsx src/entry/cli.ts`
+    └── worker.ts        # added later
+```
+
+**Rule:** code in `src/core/` may import only from `src/core/` and `src/interfaces/`. It may **not** import from `src/adapters/` or any concrete infra package (`@libsql/client`, `fs`, `cloudflare:workers`). Wiring happens at the entry point only.
+
+## Long-term target stack (post-MVP)
+
+- **Cloudflare Workers** (TypeScript, Hono) for backend APIs
 - **Cloudflare Pages + Next.js** for frontend (importer dashboard + broker review UI)
-- **D1** for relational data (customers, shipments, line items, classifications, audit log, broker accounts, SKU master)
-- **R2** for document storage (uploaded invoices/packing lists/BOLs, generated PDFs, raw HTS schedule, CROSS ruling JSON)
-- **Vectorize** for embeddings (HTS chapter notes and headings, CBP CROSS binding rulings)
+- **D1** for relational data → adapter for the `Database` interface
+- **R2** for document storage → adapter for the `BlobStorage` interface (two buckets: docs + reference)
+- **Vectorize** for HTS + CROSS embeddings → adapter for the `VectorStore` interface
 - **Workflows** for multi-step shipment lifecycle (ingest → extract → classify → calc duty → broker review → file → liquidation tracking → PSC scan)
 - **Durable Objects** for per-shipment stateful sessions and per-customer agent memory
-- **KV** for caching tariff rates, exchange rates, FTA preference rules
-- **Queues** for async fan-out (e.g., classifying 50 line items in parallel)
-- **Browser Rendering** for scraping CBP CROSS, USTR exclusion lookups, and other government portals without APIs
-- **Workers AI** for cheap workloads only: embeddings (BGE or similar), small-model OCR/extraction
-- **Anthropic API** (Claude Sonnet 4.5 for classification reasoning; Claude Haiku for high-volume cheap tasks; Claude Opus 4.7 for hardest edge cases) — all heavy reasoning goes here, not Workers AI
+- **KV** for caching tariff rates → adapter for `KeyValueCache`
+- **Queues** for async fan-out → adapter for `BackgroundQueue`
+- **Browser Rendering** for scraping CBP CROSS, USTR exclusions, FMC notices → adapter for `BrowserAutomation`
+- **Workers AI** for cheap embeddings (BGE) only → adapter for `EmbeddingProvider`
+- **Anthropic API** (Claude Sonnet 4.5 default; Haiku 4.5 cheap; Opus 4.7 hardest) — works identically locally and on Workers; not abstracted
+
+## Current (local) stack
+
+- **Node 22** runtime, run via `tsx src/entry/cli.ts`
+- **Hono** + `@hono/node-server` for HTTP
+- **SQLite** via `@libsql/client` (file-backed; API matches D1 closely)
+- **Filesystem** for blob storage under `./.data/docs` and `./.data/reference`
+- **In-memory** vector store + cache + queue
+- **Anthropic SDK** for LLM calls (same as production)
 
 ## Conventions
 
 - TypeScript strict mode everywhere
-- Hono for Worker routing
+- Hono for HTTP routing (works on Node today, Workers later)
+- `src/core/` imports only from `src/core/` and `src/interfaces/`. Never from `src/adapters/` or concrete infra packages.
 - Zod for runtime validation at every external boundary (uploads, API responses, LLM outputs, DB reads)
 - All LLM outputs validated against Zod schemas; if invalid, retry with structured output enforcement
 - All external IO through typed interfaces with explicit error types

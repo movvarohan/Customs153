@@ -3,6 +3,8 @@
 //   description, computes top-1@10, top-1@8, top-3@8, citation grounding rate,
 //   per-chapter breakdown. Writes JSON report into evals/reports/<timestamp>.json.
 
+export {};
+
 async function main(): Promise<void> {
   throw new Error("not implemented");
 }

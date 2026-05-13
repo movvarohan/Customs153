@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022"],
-    "types": ["@cloudflare/workers-types"],
+    "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -17,9 +17,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": false,
     "noEmit": true,
-    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
@@ -30,5 +28,5 @@
     "scripts/**/*.ts",
     "evals/**/*.ts"
   ],
-  "exclude": ["node_modules", "frontend", "dist", ".wrangler"]
+  "exclude": ["node_modules", "frontend", "dist", ".data"]
 }
