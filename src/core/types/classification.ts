@@ -1,24 +1,15 @@
-// TODO(CLAUDE.md §2 "HTS classification agent"):
-//   Every classification must cite at least one HTS paragraph or CBP ruling.
+// Domain type for a stored classification row (D1 / sqlite shape). The
+// agent's wire output lives in src/core/schemas/classification.ts.
 
-export interface Citation {
-  kind: "hts_paragraph" | "cbp_ruling" | "chapter_note" | "explanatory_note";
-  reference: string; // e.g., "HTS 8518.30.20" or "NY N123456"
-  excerpt: string;
-}
+import type { ClassificationResultT } from "@/core/schemas/classification";
 
 export interface Classification {
   id: string;
   lineItemId: string;
-  htsCode: string; // 10-digit
-  description: string;
-  griRuleApplied: 1 | 2 | 3 | 4 | 5 | 6;
-  citations: Citation[];
-  alternativesConsidered: { htsCode: string; rejectedBecause: string }[];
-  confidence: number; // 0..1
-  reasoningTrace: string;
+  /** Agent output (citations, alternatives, GRI rule, confidence, hts_code …). */
+  output: ClassificationResultT;
   modelVersion: string;
-  reviewedBy: string | null; // broker user id once reviewed
+  reviewedBy: string | null;
   reviewedAt: string | null;
   createdAt: string;
 }
