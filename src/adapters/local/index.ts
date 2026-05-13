@@ -10,12 +10,13 @@ import { FilesystemStorage } from "./filesystem-storage";
 import { LocalVectorStore } from "./local-vector-store";
 import { InMemoryCache } from "./in-memory-cache";
 import { InProcessQueue } from "./in-process-queue";
-import { StubEmbeddingProvider } from "./stub-embeddings";
+import { VoyageEmbeddingProvider } from "./voyage-embedding";
 import { StubBrowser } from "./stub-browser";
 
 export interface LocalContextOptions {
   dataDir: string;
   anthropicApiKey: string;
+  voyageApiKey: string;
   config: AppConfig;
 }
 
@@ -34,7 +35,12 @@ export async function buildLocalContext(opts: LocalContextOptions): Promise<AppC
     console.log("[queue] classification job received:", job);
   });
 
-  const embeddings = new StubEmbeddingProvider(768);
+  // AppContext-level embeddings is for query-time retrieval. Indexing scripts
+  // construct their own document-typed provider directly.
+  const embeddings = new VoyageEmbeddingProvider({
+    apiKey: opts.voyageApiKey,
+    inputType: "query",
+  });
   const browser = new StubBrowser();
   const anthropic = new Anthropic({ apiKey: opts.anthropicApiKey });
 

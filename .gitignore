@@ -14,3 +14,5 @@ data/hts-schedule/*
 !data/hts-schedule/.gitkeep
 data/cross-rulings/*
 !data/cross-rulings/.gitkeep
+data/hts/raw/*
+data/hts/parsed/*

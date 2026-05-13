@@ -9,7 +9,9 @@
     "start": "tsx src/entry/cli.ts",
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
-    "index:hts": "tsx scripts/index-hts.ts",
+    "hts:fetch": "tsx scripts/fetch-hts.ts",
+    "hts:index": "tsx scripts/index-hts.ts",
+    "hts:test": "tsx scripts/test-retrieval.ts",
     "index:cross": "tsx scripts/index-cross.ts",
     "seed:rates": "tsx scripts/seed-tariff-rates.ts",
     "eval:classifier": "tsx evals/run-classifier-eval.ts"

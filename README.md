@@ -21,15 +21,55 @@ cp .env.example .env
 # 3. Apply migrations to the local SQLite database
 npm run db:migrate
 
-# 4. Run the dev server
+# 4. (One-time) Fetch and index the HTS schedule — see "Data setup" below
+npm run hts:fetch
+npm run hts:index
+
+# 5. Run the dev server
 npm run dev
 
-# 5. Verify
+# 6. Verify
 curl http://localhost:8787/health
 # → {"ok":true,"service":"customs-agent","environment":"development","timestamp":"..."}
 ```
 
-The dev server hot-reloads via `tsx watch`. The SQLite file and blob storage live under `./.data/` (gitignored).
+The dev server hot-reloads via `tsx watch`. The SQLite file, vector indexes, and blob storage all live under `./.data/` (gitignored).
+
+## Data setup
+
+Retrieval-augmented classification needs an indexed copy of the US Harmonized Tariff Schedule. The three commands below are one-time per machine (re-run when USITC publishes a revision).
+
+### 1. Get a Voyage API key
+
+We use [Voyage AI](https://www.voyageai.com/) (`voyage-3-large`, 1024 dims) for embeddings — strong on technical retrieval, generous free tier, and what Anthropic recommends. Set the key in `.env`:
+
+```
+VOYAGE_API_KEY=pa-...
+```
+
+### 2. Fetch the schedule
+
+```bash
+npm run hts:fetch
+```
+
+Downloads the full HTS as JSON from USITC's public reststop endpoint into `data/hts/raw/hts-2026.json` (~15 MB, ~20k rows). Idempotent — re-running does nothing if the file is present.
+
+### 3. Index it
+
+```bash
+npm run hts:index
+```
+
+Parses every tariff line (4-, 6-, 8-, 10-digit), composes an embedding text per chunk that includes the heading hierarchy and chapter context, embeds in batches of 128 via Voyage, and writes the result to `.data/vectors/hts.json`. Takes a few minutes; shows progress as it goes.
+
+### 4. Verify retrieval
+
+```bash
+npm run hts:test
+```
+
+Runs ~10 hardcoded product descriptions (headphones, t-shirt, water bottle, lithium battery, etc.) against the index and prints the top-5 HTS codes per query with similarity scores. Eyeball the output — "wireless bluetooth headphones" should return the 8518 family, "cotton t-shirt" should return 6109, etc. This is a sanity check, not an eval. The real classifier eval (CLAUDE.md → "Eval methodology") comes later.
 
 ## Project layout
 
@@ -85,7 +125,9 @@ npm run dev              # start local server with hot reload
 npm run start            # start once (no reload)
 npm run typecheck        # tsc --noEmit
 npm run db:migrate       # apply migrations/*.sql to local SQLite
-npm run index:hts        # (stub) embed HTS schedule into local vector store
+npm run hts:fetch        # download USITC HTS JSON to data/hts/raw/
+npm run hts:index        # parse + embed (Voyage) + write vector index
+npm run hts:test         # sanity-check retrieval with sample product descriptions
 npm run index:cross      # (stub) embed CROSS rulings
 npm run seed:rates       # (stub) load tariff rate table into cache
 npm run eval:classifier  # (stub) run classifier against gold-standard set

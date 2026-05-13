@@ -8,9 +8,14 @@ import { buildLocalContext } from "@/adapters/local";
 import { buildApp } from "@/core/routes";
 
 async function main(): Promise<void> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) {
     console.error("ANTHROPIC_API_KEY is required. Copy .env.example to .env and set it.");
+    process.exit(1);
+  }
+  const voyageKey = process.env.VOYAGE_API_KEY;
+  if (!voyageKey) {
+    console.error("VOYAGE_API_KEY is required for HTS retrieval. See README \"Data setup\".");
     process.exit(1);
   }
 
@@ -18,7 +23,8 @@ async function main(): Promise<void> {
 
   const ctx = await buildLocalContext({
     dataDir: process.env.DATA_DIR ?? ".data",
-    anthropicApiKey: apiKey,
+    anthropicApiKey: anthropicKey,
+    voyageApiKey: voyageKey,
     config: {
       environment: "development",
       defaultModel: process.env.DEFAULT_MODEL ?? "claude-sonnet-4-5",

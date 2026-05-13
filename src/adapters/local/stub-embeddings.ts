@@ -1,16 +1,16 @@
-// TODO: replace with a real local embedding model (e.g. BGE via
-// @huggingface/transformers, or Voyage / OpenAI API for dev). 768-dim cosine
-// matches our planned Vectorize index dimensionality.
+// TESTS ONLY. Deterministic hash-to-vector — no semantic meaning. Use this in
+// unit tests that need an EmbeddingProvider without hitting a real API.
+// For local development and indexing, use VoyageEmbeddingProvider instead.
 //
-// This stub deterministically hashes text → vector so retrieval is at least
-// reproducible during early scaffolding work. Do NOT use it for real eval runs.
+// Default dimensions match voyage-3-large (1024) so tests can swap providers
+// without re-indexing.
 
 import type { EmbeddingProvider } from "@/interfaces/embeddings";
 
 export class StubEmbeddingProvider implements EmbeddingProvider {
   readonly dimensions: number;
 
-  constructor(dimensions = 768) {
+  constructor(dimensions = 1024) {
     this.dimensions = dimensions;
   }
 
