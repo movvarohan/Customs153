@@ -1,0 +1,17 @@
+node_modules/
+.wrangler/
+dist/
+.dev.vars
+.env
+.env.local
+*.log
+.DS_Store
+coverage/
+.vscode/
+.idea/
+evals/reports/*.json
+!evals/reports/.gitkeep
+data/hts-schedule/*
+!data/hts-schedule/.gitkeep
+data/cross-rulings/*
+!data/cross-rulings/.gitkeep
