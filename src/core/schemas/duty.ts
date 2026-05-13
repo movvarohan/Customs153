@@ -1,26 +1,76 @@
-// TODO(CLAUDE.md §3 "Duty calculator"):
-//   The duty calculator is deterministic, but we still validate the rate-table snapshot
-//   we load from KV. If the snapshot is malformed we fail loudly rather than silently
-//   producing wrong duty numbers (CBP penalty risk).
+// Zod schemas for the duty calculator. Deterministic math — no LLM
+// involvement. Money values always in integer cents.
 
 import { z } from "zod";
 
-export const TariffRateEntry = z.object({
-  htsCode: z.string(),
-  baseAdValorem: z.number().nonnegative(),
-  section301: z.number().nonnegative().nullable(),
-  section232: z.number().nonnegative().nullable(),
-  reciprocal: z.number().nonnegative().nullable(),
-  antidumping: z.number().nonnegative().nullable(),
-  countervailing: z.number().nonnegative().nullable(),
-  ftaPreferences: z.record(z.string(), z.number()), // keyed by FTA code, e.g. { USMCA: 0 }
-});
-
-export const TariffRateTable = z.object({
+export const TariffRatesTable = z.object({
   version: z.string(),
-  effectiveDate: z.string(), // UTC ISO 8601
-  entries: z.array(TariffRateEntry),
+  effective_date: z.string(),
+  fees: z.object({
+    mpf_rate: z.number(),
+    mpf_min_usd_cents: z.number().int(),
+    mpf_max_usd_cents: z.number().int(),
+    hmf_rate: z.number(),
+  }),
+  section_301_china: z.object({
+    by_chapter: z.record(z.string(), z.number()),
+  }),
+  section_232: z.object({
+    by_chapter: z.record(z.string(), z.number()),
+  }),
+  ad_valorem: z.record(z.string(), z.number()),
+  default_ad_valorem: z.number(),
 });
+export type TariffRatesTableT = z.infer<typeof TariffRatesTable>;
 
-export type TariffRateEntryT = z.infer<typeof TariffRateEntry>;
-export type TariffRateTableT = z.infer<typeof TariffRateTable>;
+export const DutyComponent = z.object({
+  kind: z.enum([
+    "base_ad_valorem",
+    "section_301",
+    "section_232",
+    "merchandise_processing_fee",
+    "harbor_maintenance_fee",
+  ]),
+  /** Decimal rate (0.025 = 2.5%); null for fixed-fee components. */
+  rate: z.number().nullable(),
+  amount_usd_cents: z.number().int().nonnegative(),
+  source_citation: z.string(),
+});
+export type DutyComponentT = z.infer<typeof DutyComponent>;
+
+export const DutyCalculationInput = z.object({
+  hts_code: z.string(),
+  country_of_origin: z.string(),
+  customs_value_usd_cents: z.number().int().nonnegative(),
+  quantity: z.number().positive().optional(),
+  unit_of_measure: z.string().optional(),
+  /** "ocean" by default; "air" / "ground" skip the HMF. */
+  transport_mode: z.enum(["ocean", "air", "ground", "unknown"]).default("ocean"),
+});
+export type DutyCalculationInputT = z.infer<typeof DutyCalculationInput>;
+
+export const DutyCalculation = z.object({
+  /** Inputs echoed for traceability. */
+  hts_code: z.string(),
+  country_of_origin: z.string(),
+  customs_value_usd_cents: z.number().int().nonnegative(),
+
+  base_duty_rate: z.number(),
+  base_duty_usd_cents: z.number().int().nonnegative(),
+
+  section_301_rate: z.number().nullable(),
+  section_301_duty_usd_cents: z.number().int().nonnegative(),
+
+  section_232_rate: z.number().nullable(),
+  section_232_duty_usd_cents: z.number().int().nonnegative(),
+
+  merchandise_processing_fee_usd_cents: z.number().int().nonnegative(),
+  harbor_maintenance_fee_usd_cents: z.number().int().nonnegative(),
+
+  total_duty_usd_cents: z.number().int().nonnegative(),
+  tariff_rate_source: z.string(),
+
+  components: z.array(DutyComponent),
+  warnings: z.array(z.string()),
+});
+export type DutyCalculationT = z.infer<typeof DutyCalculation>;

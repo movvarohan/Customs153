@@ -1,0 +1,185 @@
+{
+  "importer": "Saraswati Houseware Trading Co.",
+  "generated_at": "2026-05-13T06:44:54.573Z",
+  "entries": [
+    {
+      "entry_number": "IN-IND-1002253-01",
+      "entry_date": "2025-08-19",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Cotton dhurrie rug hand-woven flat-weave 3x5 ft",
+          "quantity": 200,
+          "unit_value_usd_cents": 4816,
+          "total_value_usd_cents": 963200,
+          "hts_code_as_filed": "5703.30.20.00",
+          "duty_paid_usd_cents": 30933,
+          "_ground_truth_correct_hts": "5702.10.90.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-1649191-02",
+      "entry_date": "2025-08-08",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Clear glass tea-light holder cut and pressed 3 inch",
+          "quantity": 823,
+          "unit_value_usd_cents": 743,
+          "total_value_usd_cents": 611489,
+          "hts_code_as_filed": "7013.99.35.00",
+          "duty_paid_usd_cents": 48062,
+          "_ground_truth_correct_hts": "7013.99.35.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-7181802-03",
+      "entry_date": "2025-06-08",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Cotton dhurrie rug hand-woven flat-weave 3x5 ft",
+          "quantity": 101,
+          "unit_value_usd_cents": 7689,
+          "total_value_usd_cents": 776589,
+          "hts_code_as_filed": "5702.10.90.00",
+          "duty_paid_usd_cents": 4242,
+          "_ground_truth_correct_hts": "5702.10.90.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-5468804-04",
+      "entry_date": "2025-09-13",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Brass candle stand hand-tooled 6-arm centerpiece",
+          "quantity": 215,
+          "unit_value_usd_cents": 2011,
+          "total_value_usd_cents": 432365,
+          "hts_code_as_filed": "9405.50.30.00",
+          "duty_paid_usd_cents": 32779,
+          "_ground_truth_correct_hts": "9405.50.30.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-9753896-05",
+      "entry_date": "2026-04-29",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Glazed ceramic mug stoneware-body cobalt blue 16oz",
+          "quantity": 723,
+          "unit_value_usd_cents": 244,
+          "total_value_usd_cents": 176412,
+          "hts_code_as_filed": "6911.10.45.00",
+          "duty_paid_usd_cents": 8326,
+          "_ground_truth_correct_hts": "6912.00.44.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-5670462-06",
+      "entry_date": "2026-04-30",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Sheesham wood cutting board 14x10 inch with juice groove",
+          "quantity": 139,
+          "unit_value_usd_cents": 2842,
+          "total_value_usd_cents": 395038,
+          "hts_code_as_filed": "4419.19.10.00",
+          "duty_paid_usd_cents": 16406,
+          "_ground_truth_correct_hts": "4419.19.10.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-1460417-07",
+      "entry_date": "2025-07-14",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Glazed ceramic mug stoneware-body cobalt blue 16oz",
+          "quantity": 419,
+          "unit_value_usd_cents": 203,
+          "total_value_usd_cents": 85057,
+          "hts_code_as_filed": "6912.00.44.00",
+          "duty_paid_usd_cents": 11713,
+          "_ground_truth_correct_hts": "6912.00.44.00"
+        },
+        {
+          "description": "Hand-painted ceramic earthenware coffee mug 12oz",
+          "quantity": 307,
+          "unit_value_usd_cents": 188,
+          "total_value_usd_cents": 57716,
+          "hts_code_as_filed": "6912.00.44.00",
+          "duty_paid_usd_cents": 8999,
+          "_ground_truth_correct_hts": "6912.00.44.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-2721021-08",
+      "entry_date": "2025-09-22",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Indian rosewood serving board with brass inlay",
+          "quantity": 80,
+          "unit_value_usd_cents": 4336,
+          "total_value_usd_cents": 346880,
+          "hts_code_as_filed": "4419.19.10.00",
+          "duty_paid_usd_cents": 14805,
+          "_ground_truth_correct_hts": "4419.19.10.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-6456846-09",
+      "entry_date": "2025-06-24",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Embossed glass votive candle holder decorative 4 inch",
+          "quantity": 1143,
+          "unit_value_usd_cents": 540,
+          "total_value_usd_cents": 617220,
+          "hts_code_as_filed": "7013.99.35.00",
+          "duty_paid_usd_cents": 48483,
+          "_ground_truth_correct_hts": "7013.99.35.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "IN-IND-8375656-10",
+      "entry_date": "2025-11-18",
+      "port_of_entry": "New York/Newark",
+      "country_of_origin": "IN",
+      "line_items": [
+        {
+          "description": "Sheesham wood cutting board 14x10 inch with juice groove",
+          "quantity": 125,
+          "unit_value_usd_cents": 5407,
+          "total_value_usd_cents": 675875,
+          "hts_code_as_filed": "4419.19.10.00",
+          "duty_paid_usd_cents": 25744,
+          "_ground_truth_correct_hts": "4419.19.10.00"
+        }
+      ]
+    }
+  ]
+}

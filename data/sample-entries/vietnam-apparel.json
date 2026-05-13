@@ -1,0 +1,270 @@
+{
+  "importer": "Meridian Apparel Imports Inc.",
+  "generated_at": "2026-05-13T06:44:54.572Z",
+  "entries": [
+    {
+      "entry_number": "VN-VIE-8396462-01",
+      "entry_date": "2026-02-15",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's cotton t-shirt black knit basic crew M",
+          "quantity": 2715,
+          "unit_value_usd_cents": 630,
+          "total_value_usd_cents": 1710450,
+          "hts_code_as_filed": "6105.10.00.10",
+          "duty_paid_usd_cents": 345022,
+          "_ground_truth_correct_hts": "6109.10.00.04"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-9661144-02",
+      "entry_date": "2026-03-29",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's short sleeve crew neck cotton t-shirt knitted white size L",
+          "quantity": 849,
+          "unit_value_usd_cents": 550,
+          "total_value_usd_cents": 466950,
+          "hts_code_as_filed": "6105.10.00.10",
+          "duty_paid_usd_cents": 95844,
+          "_ground_truth_correct_hts": "6109.10.00.04"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-4442665-03",
+      "entry_date": "2025-06-30",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Women's reversible leather belt with rotating buckle",
+          "quantity": 598,
+          "unit_value_usd_cents": 1867,
+          "total_value_usd_cents": 1116466,
+          "hts_code_as_filed": "4203.30.00.00",
+          "duty_paid_usd_cents": 35408,
+          "_ground_truth_correct_hts": "4203.30.00.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-1008600-04",
+      "entry_date": "2026-02-21",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's tooled leather belt western style 38mm",
+          "quantity": 369,
+          "unit_value_usd_cents": 959,
+          "total_value_usd_cents": 353871,
+          "hts_code_as_filed": "4203.30.00.00",
+          "duty_paid_usd_cents": 13268,
+          "_ground_truth_correct_hts": "4203.30.00.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-9376976-05",
+      "entry_date": "2025-11-04",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's cotton crew tee navy knit jersey 180gsm",
+          "quantity": 2647,
+          "unit_value_usd_cents": 642,
+          "total_value_usd_cents": 1699374,
+          "hts_code_as_filed": "6109.10.00.04",
+          "duty_paid_usd_cents": 288408,
+          "_ground_truth_correct_hts": "6109.10.00.04"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-9760707-06",
+      "entry_date": "2025-05-15",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's full-grain leather belt 1.5 inch metal pin buckle",
+          "quantity": 782,
+          "unit_value_usd_cents": 1037,
+          "total_value_usd_cents": 810934,
+          "hts_code_as_filed": "4203.30.00.00",
+          "duty_paid_usd_cents": 26180,
+          "_ground_truth_correct_hts": "4203.30.00.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-2886729-07",
+      "entry_date": "2025-05-29",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's cotton t-shirt black knit basic crew M",
+          "quantity": 2774,
+          "unit_value_usd_cents": 514,
+          "total_value_usd_cents": 1425836,
+          "hts_code_as_filed": "6109.10.00.04",
+          "duty_paid_usd_cents": 241984,
+          "_ground_truth_correct_hts": "6109.10.00.04"
+        },
+        {
+          "description": "Women's reversible leather belt with rotating buckle",
+          "quantity": 930,
+          "unit_value_usd_cents": 1579,
+          "total_value_usd_cents": 1468470,
+          "hts_code_as_filed": "4203.30.00.00",
+          "duty_paid_usd_cents": 46572,
+          "_ground_truth_correct_hts": "4203.30.00.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-6589947-08",
+      "entry_date": "2025-07-22",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Women's 100% cotton blouse Mandarin collar size M",
+          "quantity": 541,
+          "unit_value_usd_cents": 1458,
+          "total_value_usd_cents": 788778,
+          "hts_code_as_filed": "6206.30.30.10",
+          "duty_paid_usd_cents": 128095,
+          "_ground_truth_correct_hts": "6206.30.30.10"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-6144543-09",
+      "entry_date": "2025-05-28",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Cotton voile scarf lightweight printed 70x180cm",
+          "quantity": 1986,
+          "unit_value_usd_cents": 597,
+          "total_value_usd_cents": 1185642,
+          "hts_code_as_filed": "6214.30.00.00",
+          "duty_paid_usd_cents": 68428,
+          "_ground_truth_correct_hts": "6214.30.00.00"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-2919003-10",
+      "entry_date": "2026-02-01",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's cotton t-shirt black knit basic crew M",
+          "quantity": 1520,
+          "unit_value_usd_cents": 646,
+          "total_value_usd_cents": 981920,
+          "hts_code_as_filed": "6105.10.00.10",
+          "duty_paid_usd_cents": 198066,
+          "_ground_truth_correct_hts": "6109.10.00.04"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-9518682-11",
+      "entry_date": "2025-08-03",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's short sleeve crew neck cotton t-shirt knitted white size L",
+          "quantity": 1552,
+          "unit_value_usd_cents": 658,
+          "total_value_usd_cents": 1021216,
+          "hts_code_as_filed": "6109.10.00.04",
+          "duty_paid_usd_cents": 173315,
+          "_ground_truth_correct_hts": "6109.10.00.04"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-7864157-12",
+      "entry_date": "2025-06-21",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Women's cotton woven blouse short sleeve button down",
+          "quantity": 1235,
+          "unit_value_usd_cents": 1267,
+          "total_value_usd_cents": 1564745,
+          "hts_code_as_filed": "6206.30.30.10",
+          "duty_paid_usd_cents": 253041,
+          "_ground_truth_correct_hts": "6206.30.30.10"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-2442078-13",
+      "entry_date": "2025-08-29",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's 5-pocket denim jeans cotton 14oz indigo",
+          "quantity": 1164,
+          "unit_value_usd_cents": 1346,
+          "total_value_usd_cents": 1566744,
+          "hts_code_as_filed": "6203.42.07.10",
+          "duty_paid_usd_cents": 267465,
+          "_ground_truth_correct_hts": "6203.42.07.10"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-4564848-14",
+      "entry_date": "2025-08-05",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Men's cotton crew tee navy knit jersey 180gsm",
+          "quantity": 807,
+          "unit_value_usd_cents": 581,
+          "total_value_usd_cents": 468867,
+          "hts_code_as_filed": "6109.10.00.04",
+          "duty_paid_usd_cents": 81220,
+          "_ground_truth_correct_hts": "6109.10.00.04"
+        }
+      ]
+    },
+    {
+      "entry_number": "VN-VIE-8454992-15",
+      "entry_date": "2025-09-01",
+      "port_of_entry": "Los Angeles, CA",
+      "country_of_origin": "VN",
+      "line_items": [
+        {
+          "description": "Cotton voile scarf lightweight printed 70x180cm",
+          "quantity": 2466,
+          "unit_value_usd_cents": 799,
+          "total_value_usd_cents": 1970334,
+          "hts_code_as_filed": "6214.30.00.00",
+          "duty_paid_usd_cents": 113716,
+          "_ground_truth_correct_hts": "6214.30.00.00"
+        }
+      ]
+    }
+  ]
+}
