@@ -5,6 +5,32 @@ Built by `evals/tools/build_gold.py`. Each case is grounded in a CROSS ruling or
 
 **Scored cases (excluded unverifiable):** 97
 
+## Classifier accuracy on this gold set
+
+Run on 2026-05-14 against `claude-sonnet-4-5`, prompt v3.1-2026-05-13. All 97 scored cases.
+
+| metric | value |
+|---|---|
+| top-1 @ 8-digit | 56/97 (57.7%) |
+| top-3 @ 8-digit | 67/97 (69.1%) |
+| top-1 @ 10-digit | 39/97 (40.2%) |
+| chapter-correct top-1 | 84/97 (86.6%) |
+| citation grounding | 92/97 (94.8%) |
+
+**Stratified by classifier-stated confidence:**
+
+| bucket | n | top-1 @ 8d | top-3 @ 8d |
+|---|---:|---:|---:|
+| high | 64 | 42/64 (65.6%) | 50/64 (78.1%) |
+| medium | 30 | 14/30 (46.7%) | 17/30 (56.7%) |
+| low | 3 | 0/3 (0.0%) | 0/3 (0.0%) |
+
+The calibration is healthy: high-confidence cases are meaningfully more accurate than medium, and the 78.1% top-3 on high-confidence means even when the model picks the wrong primary answer, the right code is usually in its considered alternatives.
+
+**Old vs new comparison.** The old buggy 40-case gold reported top-1@8 = 57.5% on this same classifier. The new 97-case gold reports 57.7% — barely moved. That's because the rebuild flipped both directions: the classifier was getting credit for some answers the old gold marked correct that were actually wrong (so it now misses them), and getting punished for some answers the old gold marked wrong that were actually right (so it now scores them). The new number is honest; the old one was noise on top of buggy ground truth.
+
+**Per-chapter accuracy.** Strongest chapters: 19, 30, 73, 76, 87, 90, 96 (all at 100% in the chapters they cover). Weakest: 15, 17, 33 (1/4), 39 (1/5), 40 (0/3), 44 (1/4), 64, 68, 69, 71. The classifier's weak spots cluster in food, plastics, woodware, and ceramics — chapters where chapter notes and material/value tiers are decisive and candidate retrieval may not surface the right note.
+
 ## How to spot-check a citation
 Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.gov/ruling/<NUMBER>`. The product description in the ruling should plausibly match the description in the gold case (CBP descriptions are more technical; we lightly reword into seller language).
 
