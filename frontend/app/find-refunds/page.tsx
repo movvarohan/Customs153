@@ -1,0 +1,350 @@
+"use client";
+
+import { useCallback, useState } from "react";
+import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
+import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+
+interface PSCFindings {
+  importer: string;
+  analyzed_at: string;
+  total_entries_analyzed: number;
+  total_line_items_analyzed: number;
+  classified_ok: number;
+  classification_failed: number;
+  agreements: number;
+  disagreements: number;
+  outside_psc_window: number;
+  refund_opportunities: Array<{
+    entry_number: string;
+    entry_date: string;
+    line_index: number;
+    line_description: string;
+    hts_filed: string;
+    hts_predicted: string;
+    hts_filed_8: string;
+    hts_predicted_8: string;
+    duty_paid_usd_cents: number;
+    duty_predicted_usd_cents: number;
+    recoverable_amount_usd_cents: number;
+    our_confidence: "low" | "medium" | "high";
+    reasoning_summary: string;
+    psc_eligible: boolean;
+  }>;
+  uncertain_cases: Array<{
+    entry_number: string;
+    entry_date: string;
+    line_index: number;
+    line_description: string;
+    hts_filed: string;
+    hts_predicted: string;
+    reason: string;
+  }>;
+  failures: Array<{ entry_number: string; line_index: number; line_description: string; error: string }>;
+  total_recoverable_usd_cents: number;
+  confidence_breakdown: { high_usd_cents: number; medium_usd_cents: number; low_usd_cents: number };
+  notes: string[];
+}
+
+export default function FindRefundsPage() {
+  const [file, setFile] = useState<File | null>(null);
+  const [running, setRunning] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [findings, setFindings] = useState<PSCFindings | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+
+  const onPickFile = useCallback((f: File) => {
+    setFile(f);
+    setFindings(null);
+    setError(null);
+    setStatusMessage("");
+  }, []);
+
+  const start = useCallback(async () => {
+    if (!file) return;
+    setRunning(true);
+    setError(null);
+    const t0 = Date.now();
+    try {
+      const text = await file.text();
+      const body = JSON.parse(text);
+      const res = await fetch(`${API_BASE_URL}/api/find-refunds`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        setError(`backend returned ${res.status}: ${await res.text()}`);
+        return;
+      }
+      for await (const evt of readNDJSON<{ type: string; [k: string]: unknown }>(res)) {
+        setElapsedMs(Date.now() - t0);
+        if (evt.type === "status") setStatusMessage(String(evt.message));
+        else if (evt.type === "done") {
+          setFindings(evt.findings as PSCFindings);
+          setStatusMessage("Done.");
+        } else if (evt.type === "error") setError(String(evt.message));
+      }
+      setElapsedMs(Date.now() - t0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }, [file]);
+
+  const downloadPdf = useCallback(async () => {
+    if (!findings) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/render-refund-pdf`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(findings),
+      });
+      if (!res.ok) {
+        setError(`PDF render failed: ${res.status} ${await res.text()}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `customs-agent-refund-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  }, [findings]);
+
+  return (
+    <div className="space-y-8">
+      <header>
+        <h1 className="text-3xl font-bold text-navy">Find refund opportunities</h1>
+        <p className="mt-2 max-w-2xl text-muted">
+          Upload an export of your historical entries (JSON, the format the PSC finder consumes). We re-classify every line and surface
+          every Post Summary Correction with quantified savings, sorted by recoverable amount.
+        </p>
+      </header>
+
+      {!findings && (
+        <div className="space-y-4">
+          <label
+            className={classNames(
+              "flex cursor-pointer flex-col items-center justify-center rounded-card border-2 border-dashed bg-white p-12 text-center transition",
+              "border-cardline hover:border-accent/40",
+            )}
+          >
+            <input
+              type="file"
+              accept=".json"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onPickFile(f);
+              }}
+            />
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-navy-50 text-navy">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M14 3v5h5M9 14h6M9 18h6M9 10h2M5 21h14a2 2 0 002-2V8l-5-5H5a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div className="text-sm font-semibold text-navy">Choose your historical entries JSON</div>
+            <div className="mt-1 text-xs text-muted">
+              The format produced by an ACE Importer Portal export, or by your broker. See{" "}
+              <code className="rounded bg-navy-50 px-1 text-[11px]">data/sample-entries/</code> for sample files.
+            </div>
+            {file && <div className="mt-4 text-sm text-accent-700">Ready: {file.name}</div>}
+          </label>
+          {file && !running && (
+            <button
+              onClick={start}
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent-700"
+            >
+              Run refund analysis →
+            </button>
+          )}
+        </div>
+      )}
+
+      {(running || error || findings) && (
+        <div className="rounded-card border border-cardline bg-white p-6 shadow-card">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">Status</div>
+              <div className="mt-1 flex items-center gap-2 text-base text-navy">
+                {running && <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />}
+                <span>{error ? `Error: ${error}` : statusMessage || "Starting…"}</span>
+              </div>
+            </div>
+            {elapsedMs > 0 && <div className="text-xs text-muted">Elapsed {(elapsedMs / 1000).toFixed(1)}s</div>}
+          </div>
+        </div>
+      )}
+
+      {findings && (
+        <>
+          {/* AT A GLANCE — mirrors the PDF cover */}
+          <div className="rounded-card border border-cardline bg-navy-50 p-6">
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
+              At a glance — {findings.importer}
+            </div>
+            <div className="mb-4 text-xs text-muted">Analysis date {new Date(findings.analyzed_at).toISOString().slice(0, 10)}</div>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              <Metric label="Entries analyzed" value={String(findings.total_entries_analyzed)} />
+              <Metric label="Line items analyzed" value={String(findings.total_line_items_analyzed)} />
+              <Metric
+                label="Classified / failed"
+                value={`${findings.classified_ok} / ${findings.classification_failed}`}
+              />
+              <Metric label="Refund opportunities" value={String(findings.refund_opportunities.length)} />
+              <Metric
+                label="Total recoverable"
+                value={fmtMoney(findings.total_recoverable_usd_cents)}
+                accent
+              />
+              <Metric
+                label="High / Medium confidence"
+                value={`${fmtMoney(findings.confidence_breakdown.high_usd_cents)} / ${fmtMoney(findings.confidence_breakdown.medium_usd_cents)}`}
+              />
+            </div>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                onClick={downloadPdf}
+                disabled={downloading}
+                className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent-700 disabled:opacity-60"
+              >
+                {downloading ? "Rendering PDF…" : "Download full report (PDF)"}
+              </button>
+              <button
+                onClick={() => {
+                  setFile(null);
+                  setFindings(null);
+                  setStatusMessage("");
+                  setElapsedMs(0);
+                }}
+                className="text-sm text-muted hover:text-navy"
+              >
+                Start over with a different file
+              </button>
+            </div>
+          </div>
+
+          {/* Opportunity cards */}
+          <section>
+            <h2 className="mb-4 text-xl font-bold text-navy">
+              Refund opportunities ({findings.refund_opportunities.length})
+            </h2>
+            {findings.refund_opportunities.length === 0 ? (
+              <div className="rounded-card border border-cardline bg-white p-6 text-sm text-muted">
+                We agreed with the broker&apos;s filed classification on every line. No recoverable duties surfaced at sufficient
+                confidence for filing.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {findings.refund_opportunities.map((opp, i) => (
+                  <div key={i} className="rounded-card border border-cardline bg-white p-6 shadow-card">
+                    <div className="mb-1 flex flex-wrap items-baseline justify-between gap-3">
+                      <div>
+                        <span className="text-2xl font-bold text-navy">
+                          {fmtMoney(opp.recoverable_amount_usd_cents)}
+                        </span>
+                        <span className="ml-2 text-sm text-muted">recoverable</span>
+                      </div>
+                      <ConfidenceBadge value={opp.our_confidence} />
+                    </div>
+                    <div className="mb-4 text-xs text-muted">
+                      {opp.entry_number} · entry date {opp.entry_date} ·{" "}
+                      {opp.psc_eligible ? "within PSC window" : (
+                        <span className="text-warn">outside PSC window — protest required</span>
+                      )}
+                    </div>
+
+                    <div className="mb-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">Product as filed</div>
+                      <div className="mt-0.5 text-sm text-navy">{opp.line_description}</div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 rounded-md bg-navy-50 p-4">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wider text-muted">Filed classification</div>
+                        <div className="font-mono text-base font-semibold text-navy">{opp.hts_filed}</div>
+                        <div className="text-xs text-muted">duty paid: {fmtMoney(opp.duty_paid_usd_cents)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wider text-muted">Our proposed</div>
+                        <div className="font-mono text-base font-semibold text-accent">{opp.hts_predicted}</div>
+                        <div className="text-xs text-muted">duty under our code: {fmtMoney(opp.duty_predicted_usd_cents)}</div>
+                      </div>
+                    </div>
+
+                    <details className="mt-4 text-sm">
+                      <summary className="cursor-pointer font-semibold text-navy">Why we believe this is misclassified</summary>
+                      <div className="mt-2 whitespace-pre-line text-muted">{opp.reasoning_summary}</div>
+                    </details>
+
+                    <div className="mt-4 border-t border-cardline pt-3 text-[11px] italic text-muted">
+                      This finding requires review by a licensed customs broker before filing a Post Summary Correction.
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {(findings.uncertain_cases.length > 0 || findings.failures.length > 0) && (
+            <section>
+              <h2 className="mb-3 text-xl font-bold text-navy">For broker review</h2>
+              <div className="space-y-2">
+                {findings.uncertain_cases.map((u, i) => (
+                  <div key={"u" + i} className="rounded-md border border-amber/30 bg-amber-50 p-4 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-navy">
+                        {u.entry_number} · line {u.line_index + 1}
+                      </div>
+                      <span className="text-[11px] font-semibold uppercase tracking-widest text-amber-700">
+                        Uncertain (low confidence)
+                      </span>
+                    </div>
+                    <div className="mt-1 text-muted">{u.line_description}</div>
+                    <div className="mt-1 text-xs text-muted">
+                      filed <span className="font-mono">{u.hts_filed}</span> · agent predicted{" "}
+                      <span className="font-mono">{u.hts_predicted}</span>
+                    </div>
+                  </div>
+                ))}
+                {findings.failures.map((f, i) => (
+                  <div key={"f" + i} className="rounded-md border border-warn/40 bg-white p-4 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-navy">
+                        {f.entry_number} · line {f.line_index + 1}
+                      </div>
+                      <span className="text-[11px] font-semibold uppercase tracking-widest text-warn">
+                        Classification failed
+                      </span>
+                    </div>
+                    <div className="mt-1 text-muted">{f.line_description}</div>
+                    <div className="mt-1 text-xs italic text-muted">{f.error.slice(0, 200)}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
+      <div className={classNames("mt-0.5 truncate font-semibold", accent ? "text-xl text-accent" : "text-navy")}>{value}</div>
+    </div>
+  );
+}
