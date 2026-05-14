@@ -189,21 +189,19 @@ apiRoute.post("/find-refunds", async (c) => {
       const totalLines = historical.entries.reduce((a, e) => a + e.line_items.length, 0);
       await emit({
         type: "status",
+        importer: historical.importer,
         message: `Analyzing ${historical.entries.length} entries (${totalLines} line items)…`,
         total_lines: totalLines,
       });
 
-      // psc-finder doesn't expose per-line callbacks, so emit a single status
-      // message and then the full result. For the demo a single in-flight
-      // status is fine; the client shows an animated progress hint.
       const { findings } = await findRefundOpportunities(ctx, safeHistorical, {
         asOf: new Date(),
         concurrency: CONCURRENCY,
+        onLineAnalyzed: async (event) => {
+          await emit({ type: "line_analyzed", ...event });
+        },
       });
-      await emit({
-        type: "status",
-        message: "Compiling findings…",
-      });
+      await emit({ type: "status", message: "Compiling findings…" });
       await emit({ type: "done", findings });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
