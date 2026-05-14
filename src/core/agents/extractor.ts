@@ -115,9 +115,9 @@ export interface ExtractTrace {
   extractionId: string;
   promptVersion: string;
   model: string;
-  documentPath: string;
-  documentBytes: number;
-  documentKindGuess: "pdf" | "image";
+  /** All documents that were merged into this single shipment. */
+  documentPaths: string[];
+  documentBytesTotal: number;
   rawToolInput: unknown;
   result: ExtractionResultT;
 }
@@ -127,33 +127,43 @@ const RECON_TOLERANCE_CENTS = 1;
 
 export async function extract(
   ctx: AppContext,
-  documentPath: string,
+  documentPaths: string | string[],
 ): Promise<{ result: ExtractionResultT; trace: ExtractTrace }> {
+  const paths = Array.isArray(documentPaths) ? documentPaths : [documentPaths];
+  if (paths.length === 0) {
+    throw new Error("extractor: at least one document path is required");
+  }
   const extractionId = randomUUID();
   const model = ctx.config.defaultModel;
-  const absPath = path.resolve(documentPath);
-  const bytes = await fs.readFile(absPath);
-  const ext = path.extname(absPath).toLowerCase();
-  const isPdf = ext === ".pdf";
-  const documentBlock = isPdf ? buildPdfBlock(bytes) : buildImageBlock(bytes, ext);
 
-  if (isPdf) {
-    // Sonnet accepts up to MAX_PDF_PAGES_PER_CALL pages in one document
-    // content block. Larger PDFs go through chunk-and-merge; we leave
-    // that as a TODO and only handle the common single-document case here.
-    // For now the SDK / model will surface a "too many pages" error if
-    // the document exceeds the limit and the caller can split.
+  const docs = await Promise.all(
+    paths.map(async (p) => {
+      const absPath = path.resolve(p);
+      const bytes = await fs.readFile(absPath);
+      const ext = path.extname(absPath).toLowerCase();
+      const isPdf = ext === ".pdf";
+      const block = isPdf ? buildPdfBlock(bytes) : buildImageBlock(bytes, ext);
+      return { absPath, bytes, ext, isPdf, block };
+    }),
+  );
+
+  if (docs.some((d) => d.isPdf)) {
+    // Sonnet accepts up to MAX_PDF_PAGES_PER_CALL pages per document content
+    // block. Larger PDFs go through chunk-and-merge; we leave that as a TODO
+    // and the SDK / model will surface a "too many pages" error if exceeded.
     void MAX_PDF_PAGES_PER_CALL;
   }
+
+  const promptText =
+    docs.length === 1
+      ? "Extract this customs document into the structured shape required by the report_extraction tool. Preserve every line item's seller description verbatim. Apply the rules in the system prompt; flag vague descriptions in requires_clarification."
+      : `${docs.length} documents are attached. They describe the SAME shipment. Merge them into ONE ExtractedShipment per the rules in the system prompt: invoice for monetary fields, packing list for country_of_origin and material_composition, mill test certificate for steel/aluminum material details. Cross-reference line items by description + model + quantity. Output a SINGLE record via report_extraction.`;
 
   const userMessage: Anthropic.Messages.MessageParam = {
     role: "user",
     content: [
-      documentBlock,
-      {
-        type: "text" as const,
-        text: "Extract this customs document into the structured shape required by the report_extraction tool. Preserve every line item's seller description verbatim. Apply the rules in the system prompt; flag vague descriptions in requires_clarification.",
-      },
+      ...docs.map((d) => d.block),
+      { type: "text" as const, text: promptText },
     ],
   };
 
@@ -216,9 +226,8 @@ export async function extract(
     extractionId,
     promptVersion: EXTRACTOR_PROMPT_VERSION,
     model,
-    documentPath: absPath,
-    documentBytes: bytes.byteLength,
-    documentKindGuess: isPdf ? "pdf" : "image",
+    documentPaths: docs.map((d) => d.absPath),
+    documentBytesTotal: docs.reduce((a, d) => a + d.bytes.byteLength, 0),
     rawToolInput: toolUse.input,
     result,
   };

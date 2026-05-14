@@ -16,6 +16,36 @@ interface LineClassification {
   validation_warning: string | null;
 }
 
+interface DutyComponent {
+  kind:
+    | "base_ad_valorem"
+    | "section_301"
+    | "section_232"
+    | "merchandise_processing_fee"
+    | "harbor_maintenance_fee";
+  rate: number | null;
+  amount_usd_cents: number;
+  source_citation: string;
+}
+
+interface DutyCalculation {
+  hts_code: string;
+  country_of_origin: string;
+  customs_value_usd_cents: number;
+  base_duty_rate: number;
+  base_duty_usd_cents: number;
+  section_301_rate: number | null;
+  section_301_duty_usd_cents: number;
+  section_232_rate: number | null;
+  section_232_duty_usd_cents: number;
+  merchandise_processing_fee_usd_cents: number;
+  harbor_maintenance_fee_usd_cents: number;
+  total_duty_usd_cents: number;
+  tariff_rate_source: string;
+  components: DutyComponent[];
+  warnings: string[];
+}
+
 interface ExtractedShipment {
   document_kind: string;
   vendor: string;
@@ -26,6 +56,7 @@ interface ExtractedShipment {
   currency: string;
   total_value: number;
   total_value_usd_cents: number | null;
+  fx_rate_used: number | null;
   line_items: Array<{
     description: string;
     quantity: number;
@@ -40,17 +71,9 @@ interface ExtractedShipment {
   reconciliation_warning: string | null;
 }
 
-interface DocumentBlock {
-  file_index: number;
-  filename: string;
-  extraction: ExtractedShipment;
-  // Mirror of line_items indexed by line_index.
-  lineStates: LineState[];
-}
-
 type LineState =
   | { status: "pending" }
-  | { status: "classified"; classification: LineClassification }
+  | { status: "classified"; classification: LineClassification; duty: DutyCalculation | null; dutyError: string | null }
   | { status: "failed"; error: string };
 
 export default function ProcessInvoicePage() {
@@ -58,29 +81,36 @@ export default function ProcessInvoicePage() {
   const [dragActive, setDragActive] = useState(false);
   const [running, setRunning] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
-  const [documents, setDocuments] = useState<DocumentBlock[]>([]);
+  const [extraction, setExtraction] = useState<ExtractedShipment | null>(null);
+  const [sourceFilenames, setSourceFilenames] = useState<string[]>([]);
+  const [lineStates, setLineStates] = useState<LineState[]>([]);
   const [summary, setSummary] = useState<{
     total_documents: number;
     total_lines: number;
     classified_ok: number;
     failed: number;
+    total_duty_usd_cents: number;
+    currency: string;
+    customs_value_usd_cents: number | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState<number>(0);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
     if (arr.length === 0) return;
     setFiles((prev) => {
-      // De-dupe by name + size + lastModified.
       const seen = new Set(prev.map((f) => `${f.name}|${f.size}|${f.lastModified}`));
       const additions = arr.filter((f) => !seen.has(`${f.name}|${f.size}|${f.lastModified}`));
       return [...prev, ...additions];
     });
-    setDocuments([]);
+    setExtraction(null);
+    setLineStates([]);
     setSummary(null);
     setError(null);
     setStatusMessage("");
+    setExpanded(new Set());
   }, []);
 
   const removeFile = useCallback((idx: number) => {
@@ -97,11 +127,21 @@ export default function ProcessInvoicePage() {
     [addFiles],
   );
 
+  const toggleExpanded = useCallback((idx: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }, []);
+
   const start = useCallback(async () => {
     if (files.length === 0) return;
     setRunning(true);
     setError(null);
-    setDocuments([]);
+    setExtraction(null);
+    setLineStates([]);
     setSummary(null);
     const t0 = Date.now();
     try {
@@ -117,47 +157,49 @@ export default function ProcessInvoicePage() {
         if (evt.type === "status") {
           setStatusMessage(String(evt.message));
         } else if (evt.type === "extracted") {
-          const fi = evt.file_index as number;
-          const filename = String(evt.filename);
           const ex = evt.extraction as ExtractedShipment;
-          setDocuments((prev) => {
-            const next = [...prev];
-            next[fi] = {
-              file_index: fi,
-              filename,
-              extraction: ex,
-              lineStates: ex.line_items.map(() => ({ status: "pending" }) as LineState),
-            };
-            return next;
-          });
+          setExtraction(ex);
+          setSourceFilenames((evt.source_filenames as string[]) ?? []);
+          setLineStates(ex.line_items.map(() => ({ status: "pending" }) as LineState));
         } else if (evt.type === "line_classified") {
-          const fi = evt.file_index as number;
           const idx = evt.line_index as number;
           const cl = evt.classification as LineClassification;
-          setStatusMessage(`Classified file ${fi + 1} · line ${idx + 1}…`);
-          setDocuments((prev) => {
+          setStatusMessage(`Classified line ${idx + 1}…`);
+          setLineStates((prev) => {
             const next = [...prev];
-            const doc = next[fi];
-            if (!doc) return prev;
-            const states = [...doc.lineStates];
-            states[idx] = { status: "classified", classification: cl };
-            next[fi] = { ...doc, lineStates: states };
+            next[idx] = { status: "classified", classification: cl, duty: null, dutyError: null };
+            return next;
+          });
+        } else if (evt.type === "line_duty_calculated") {
+          const idx = evt.line_index as number;
+          const duty = evt.duty as DutyCalculation;
+          setLineStates((prev) => {
+            const next = [...prev];
+            const cur = next[idx];
+            if (cur && cur.status === "classified") {
+              next[idx] = { ...cur, duty };
+            }
             return next;
           });
         } else if (evt.type === "line_failed") {
-          const fi = evt.file_index as number;
           const idx = evt.line_index as number;
-          setDocuments((prev) => {
+          setLineStates((prev) => {
             const next = [...prev];
-            const doc = next[fi];
-            if (!doc) return prev;
-            const states = [...doc.lineStates];
-            states[idx] = { status: "failed", error: String(evt.error) };
-            next[fi] = { ...doc, lineStates: states };
+            next[idx] = { status: "failed", error: String(evt.error) };
             return next;
           });
         } else if (evt.type === "done") {
-          setSummary(evt.summary as { total_documents: number; total_lines: number; classified_ok: number; failed: number });
+          setSummary(
+            evt.summary as {
+              total_documents: number;
+              total_lines: number;
+              classified_ok: number;
+              failed: number;
+              total_duty_usd_cents: number;
+              currency: string;
+              customs_value_usd_cents: number | null;
+            },
+          );
           setStatusMessage("Done.");
         } else if (evt.type === "error") {
           setError(String(evt.message));
@@ -171,19 +213,18 @@ export default function ProcessInvoicePage() {
     }
   }, [files]);
 
-  const hasResults = documents.length > 0;
-
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-3xl font-bold text-navy">Process invoices</h1>
+        <h1 className="text-3xl font-bold text-navy">Process a shipment</h1>
         <p className="mt-2 max-w-2xl text-muted">
-          Drag one or more shipping documents — commercial invoice, packing list — to extract every line item and classify it under the US
-          Harmonized Tariff Schedule. The more documents you provide, the more context the extractor has.
+          Drag in every document for one shipment — commercial invoice, packing list, bill of lading, mill test certificate. We merge them
+          into a single record, classify each line under the US Harmonized Tariff Schedule, and compute exactly what you owe in duty with a
+          full per-component breakdown.
         </p>
       </header>
 
-      {!hasResults && (
+      {!extraction && (
         <label
           onDragOver={(e) => {
             e.preventDefault();
@@ -212,16 +253,19 @@ export default function ProcessInvoicePage() {
             </svg>
           </div>
           <div className="text-sm font-semibold text-navy">Drag PDFs here, or click to choose files</div>
-          <div className="mt-1 text-xs text-muted">PDF up to 10 pages each, or PNG / JPG. Multiple files allowed.</div>
+          <div className="mt-1 max-w-md text-xs text-muted">
+            Multiple documents for the same shipment are merged into one record. Invoice + packing list + BL together give the
+            classifier the most context.
+          </div>
         </label>
       )}
 
       {/* File list + action */}
-      {files.length > 0 && !hasResults && !running && (
+      {files.length > 0 && !extraction && !running && (
         <div className="rounded-card border border-cardline bg-white p-4 shadow-card">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-              Ready to process · {files.length} file{files.length === 1 ? "" : "s"}
+              Ready · {files.length} file{files.length === 1 ? "" : "s"} · all merged into one shipment
             </div>
             <label className="cursor-pointer text-xs font-medium text-accent-700 transition hover:text-accent">
               + add more
@@ -264,22 +308,20 @@ export default function ProcessInvoicePage() {
               onClick={start}
               className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-700"
             >
-              Process {files.length === 1 ? "this invoice" : `${files.length} documents`}
+              Process this shipment
               <span aria-hidden>→</span>
             </button>
           </div>
         </div>
       )}
 
-      {(running || hasResults || error) && (
+      {(running || extraction || error) && (
         <div className="rounded-card border border-cardline bg-white p-6 shadow-card">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">Status</div>
               <div className="mt-1 flex items-center gap-2 text-base text-navy">
-                {running && (
-                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />
-                )}
+                {running && <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />}
                 <span>{error ? `Error: ${error}` : statusMessage || "Starting…"}</span>
               </div>
             </div>
@@ -287,130 +329,353 @@ export default function ProcessInvoicePage() {
               {elapsedMs > 0 && <>Elapsed {(elapsedMs / 1000).toFixed(1)}s</>}
               {summary && (
                 <div className="mt-1">
-                  {summary.total_documents} doc{summary.total_documents === 1 ? "" : "s"} · {summary.total_lines} lines · {summary.classified_ok} classified · {summary.failed} failed
+                  {summary.total_documents} doc{summary.total_documents === 1 ? "" : "s"} · {summary.total_lines} lines ·{" "}
+                  {summary.classified_ok} classified · {summary.failed} failed
                 </div>
               )}
             </div>
           </div>
 
-          {documents.map((doc) => (
-            <DocumentSection key={doc.file_index} doc={doc} />
-          ))}
+          {extraction && (
+            <>
+              {/* Total duty headline */}
+              {summary && summary.total_duty_usd_cents > 0 && (
+                <div className="mb-6 rounded-md bg-navy-50 p-5 ring-1 ring-cardline">
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">Total duty owed</div>
+                  <div className="mt-1 flex flex-wrap items-baseline gap-3">
+                    <span className="text-4xl font-bold tabular-nums text-accent">
+                      {fmtMoney(summary.total_duty_usd_cents)}
+                    </span>
+                    {summary.customs_value_usd_cents !== null && (
+                      <span className="text-xs text-muted">
+                        on a customs value of{" "}
+                        <span className="text-navy">{fmtMoney(summary.customs_value_usd_cents)}</span>
+                        {extraction.fx_rate_used !== null && extraction.currency !== "USD" && (
+                          <> (FX {extraction.fx_rate_used.toFixed(4)} {extraction.currency}/USD)</>
+                        )}
+                        {" · "}
+                        effective rate{" "}
+                        <span className="text-navy">
+                          {(
+                            (summary.total_duty_usd_cents / summary.customs_value_usd_cents) *
+                            100
+                          ).toFixed(2)}
+                          %
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 text-[11px] text-muted">
+                    Click any line below for the full per-component duty breakdown with rate citations.
+                  </div>
+                </div>
+              )}
+
+              {/* Shipment metadata */}
+              <div className="mb-4 grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+                <Metric label="Vendor" value={extraction.vendor} />
+                <Metric label="Invoice" value={extraction.invoice_number} />
+                <Metric label="Date" value={extraction.invoice_date} />
+                <Metric
+                  label="Total value"
+                  value={`${fmtMoney(extraction.total_value, extraction.currency)}${extraction.total_value_usd_cents !== null && extraction.currency !== "USD" ? ` (${fmtMoney(extraction.total_value_usd_cents)} USD)` : ""}`}
+                />
+              </div>
+
+              {sourceFilenames.length > 0 && (
+                <div className="mb-4 text-[11px] text-muted">
+                  Merged from: {sourceFilenames.join(", ")}
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-md border border-cardline">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-cardline bg-navy-50 text-left text-[11px] font-semibold uppercase tracking-wider text-muted">
+                      <th className="py-2.5 pl-4 pr-3">#</th>
+                      <th className="py-2.5 pr-3">Description</th>
+                      <th className="py-2.5 pr-3 text-right">Qty</th>
+                      <th className="py-2.5 pr-3 text-right">Value ({extraction.currency})</th>
+                      <th className="py-2.5 pr-3">HTS (8d)</th>
+                      <th className="py-2.5 pr-3 text-right">Duty (USD)</th>
+                      <th className="py-2.5 pr-4">Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extraction.line_items.map((li, i) => {
+                      const st = lineStates[i] ?? { status: "pending" };
+                      const isClassified = st.status === "classified";
+                      const isFailed = st.status === "failed";
+                      const missing = isClassified ? st.classification.missing_inputs_for_precision : [];
+                      const isExpanded = expanded.has(i);
+                      const canExpand = isClassified;
+                      return (
+                        <>
+                          <tr
+                            key={`row-${i}`}
+                            className={classNames(
+                              "align-top border-b border-cardline/60 transition-colors last:border-b-0",
+                              i % 2 === 1 && "bg-navy-50/30",
+                              canExpand && "cursor-pointer hover:bg-accent-50/40",
+                            )}
+                            onClick={canExpand ? () => toggleExpanded(i) : undefined}
+                          >
+                            <td className="py-3.5 pl-4 pr-3 tabular-nums text-muted">
+                              {canExpand && (
+                                <span aria-hidden className="mr-1 inline-block w-3 text-muted">
+                                  {isExpanded ? "▾" : "▸"}
+                                </span>
+                              )}
+                              {i + 1}
+                            </td>
+                            <td className="py-3.5 pr-3">
+                              <div className="text-navy">{li.description}</div>
+                              {li.material_composition && (
+                                <div className="mt-0.5 text-[11px] text-muted">{li.material_composition}</div>
+                              )}
+                              {missing.length > 0 && (
+                                <div className="mt-2 rounded-md border border-amber/30 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                                  <div className="font-semibold">
+                                    Broker should confirm: {missing.length} missing input{missing.length === 1 ? "" : "s"}
+                                  </div>
+                                  <ul className="ml-3 mt-0.5 list-disc space-y-0.5">
+                                    {missing.map((m, k) => (
+                                      <li key={k}>{m}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {isFailed && (
+                                <div className="mt-2 rounded-md border border-warn/40 bg-white px-2 py-1.5 text-[11px] text-warn">
+                                  <div className="font-semibold">Classification failed after 3 retries</div>
+                                  <div className="mt-0.5 italic text-muted">{st.error.slice(0, 160)}</div>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3.5 pr-3 text-right tabular-nums text-navy">{li.quantity}</td>
+                            <td className="py-3.5 pr-3 text-right tabular-nums text-navy">
+                              {(li.total_value / 100).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td className="py-3.5 pr-3 font-mono text-navy">
+                              {isClassified ? (
+                                st.classification.hts_code_8
+                              ) : isFailed ? (
+                                <span className="text-warn">—</span>
+                              ) : (
+                                <span className="inline-block h-3 w-16 animate-pulse rounded bg-navy-100" />
+                              )}
+                            </td>
+                            <td className="py-3.5 pr-3 text-right font-mono tabular-nums text-navy">
+                              {isClassified && st.duty ? (
+                                <span className="font-semibold">{fmtMoney(st.duty.total_duty_usd_cents)}</span>
+                              ) : isClassified ? (
+                                <span className="text-[11px] text-muted">computing…</span>
+                              ) : isFailed ? (
+                                <span className="text-warn">—</span>
+                              ) : (
+                                <span className="inline-block h-3 w-16 animate-pulse rounded bg-navy-100" />
+                              )}
+                            </td>
+                            <td className="py-3.5 pr-4">
+                              {isClassified ? (
+                                <ConfidenceBadge value={st.classification.confidence} />
+                              ) : isFailed ? (
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-warn">failed</span>
+                              ) : (
+                                <span className="text-[11px] text-muted">…</span>
+                              )}
+                            </td>
+                          </tr>
+                          {isExpanded && isClassified && (
+                            <tr key={`detail-${i}`} className="border-b border-cardline bg-navy-50/40">
+                              <td colSpan={7} className="px-4 py-5">
+                                <LineDetail
+                                  description={li.description}
+                                  classification={st.classification}
+                                  duty={st.duty}
+                                  dutyError={st.dutyError}
+                                  customsValueLabel={
+                                    extraction.currency === "USD"
+                                      ? `${fmtMoney(li.total_value)} (USD, from invoice)`
+                                      : extraction.fx_rate_used !== null
+                                        ? `${fmtMoney(Math.round(li.total_value * extraction.fx_rate_used))} (USD, converted from ${fmtMoney(li.total_value, extraction.currency)} at FX ${extraction.fx_rate_used.toFixed(4)})`
+                                        : `${fmtMoney(li.total_value, extraction.currency)} — no FX rate available`
+                                  }
+                                />
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {extraction.requires_clarification.length > 0 && (
+                <div className="mt-4 rounded-md border border-amber/30 bg-amber-50 p-3 text-xs text-amber-700">
+                  <strong>Vague descriptions flagged:</strong>{" "}
+                  {extraction.requires_clarification.map((r) => `line ${r.line_index + 1}`).join(", ")} — broker should ask the importer
+                  for product details before classifying.
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function DocumentSection({ doc }: { doc: DocumentBlock }) {
-  const { extraction, lineStates, filename } = doc;
+function LineDetail({
+  description,
+  classification,
+  duty,
+  dutyError,
+  customsValueLabel,
+}: {
+  description: string;
+  classification: LineClassification;
+  duty: DutyCalculation | null;
+  dutyError: string | null;
+  customsValueLabel: string;
+}) {
   return (
-    <section className="mb-8 last:mb-0">
-      <div className="mb-3 flex items-baseline justify-between border-b border-cardline pb-2">
-        <h2 className="text-sm font-semibold text-navy">
-          <span className="mr-2 text-[10px] font-bold uppercase tracking-widest text-muted">Document {doc.file_index + 1}</span>
-          {filename}
-        </h2>
-      </div>
-      <div className="mb-4 grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-        <Metric label="Vendor" value={extraction.vendor} />
-        <Metric label="Invoice" value={extraction.invoice_number} />
-        <Metric label="Date" value={extraction.invoice_date} />
-        <Metric
-          label="Total"
-          value={`${fmtMoney(extraction.total_value, extraction.currency)}${extraction.total_value_usd_cents !== null && extraction.currency !== "USD" ? ` (${fmtMoney(extraction.total_value_usd_cents)} USD)` : ""}`}
-        />
-      </div>
-
-      <div className="overflow-x-auto rounded-md border border-cardline">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-cardline bg-navy-50 text-left text-[11px] font-semibold uppercase tracking-wider text-muted">
-              <th className="py-2.5 pl-4 pr-3">#</th>
-              <th className="py-2.5 pr-3">Description</th>
-              <th className="py-2.5 pr-3 text-right">Qty</th>
-              <th className="py-2.5 pr-3 text-right">Total ({extraction.currency})</th>
-              <th className="py-2.5 pr-3">HTS (8d)</th>
-              <th className="py-2.5 pr-4">Confidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {extraction.line_items.map((li, i) => {
-              const st = lineStates[i] ?? { status: "pending" };
-              const isClassified = st.status === "classified";
-              const isFailed = st.status === "failed";
-              const missing = isClassified ? st.classification.missing_inputs_for_precision : [];
-              return (
-                <tr
-                  key={i}
-                  className={classNames(
-                    "align-top border-b border-cardline/60 transition-colors last:border-b-0",
-                    i % 2 === 1 && "bg-navy-50/30",
-                    "hover:bg-accent-50/40",
-                  )}
-                >
-                  <td className="py-3.5 pl-4 pr-3 tabular-nums text-muted">{i + 1}</td>
-                  <td className="py-3.5 pr-3">
-                    <div className="text-navy">{li.description}</div>
-                    {li.material_composition && (
-                      <div className="mt-0.5 text-[11px] text-muted">{li.material_composition}</div>
-                    )}
-                    {missing.length > 0 && (
-                      <div className="mt-2 rounded-md border border-amber/30 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                        <div className="font-semibold">
-                          Broker should confirm: {missing.length} missing input{missing.length === 1 ? "" : "s"}
-                        </div>
-                        <ul className="ml-3 mt-0.5 list-disc space-y-0.5">
-                          {missing.map((m, k) => (
-                            <li key={k}>{m}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {isFailed && (
-                      <div className="mt-2 rounded-md border border-warn/40 bg-white px-2 py-1.5 text-[11px] text-warn">
-                        <div className="font-semibold">Classification failed after 3 retries</div>
-                        <div className="mt-0.5 italic text-muted">{st.error.slice(0, 160)}</div>
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-3.5 pr-3 text-right tabular-nums text-navy">{li.quantity}</td>
-                  <td className="py-3.5 pr-3 text-right tabular-nums text-navy">
-                    {(li.total_value / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </td>
-                  <td className="py-3.5 pr-3 font-mono text-navy">
-                    {isClassified ? (
-                      st.classification.hts_code_8
-                    ) : isFailed ? (
-                      <span className="text-warn">—</span>
-                    ) : (
-                      <span className="inline-block h-3 w-16 animate-pulse rounded bg-navy-100" />
-                    )}
-                  </td>
-                  <td className="py-3.5 pr-4">
-                    {isClassified ? (
-                      <ConfidenceBadge value={st.classification.confidence} />
-                    ) : isFailed ? (
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-warn">failed</span>
-                    ) : (
-                      <span className="text-[11px] text-muted">…</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {extraction.requires_clarification.length > 0 && (
-        <div className="mt-4 rounded-md border border-amber/30 bg-amber-50 p-3 text-xs text-amber-700">
-          <strong>Vague descriptions flagged:</strong>{" "}
-          {extraction.requires_clarification.map((r) => `line ${r.line_index + 1}`).join(", ")} — broker should ask the importer
-          for product details before classifying.
+    <div className="space-y-5">
+      {/* Classification reasoning */}
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">Classification</div>
+        <div className="mt-1 flex flex-wrap items-baseline gap-3">
+          <span className="font-mono text-base font-semibold text-navy">{classification.hts_code}</span>
+          <span className="text-xs text-muted">
+            GRI {classification.gri_rule_applied} applied · {classification.confidence} confidence
+          </span>
         </div>
-      )}
-    </section>
+        <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-muted">{classification.reasoning}</p>
+        {classification.citations.length > 0 && (
+          <div className="mt-2 text-[11px] text-muted">
+            Citations:{" "}
+            {classification.citations.map((c, i) => (
+              <span key={i} className="mr-2 inline-block rounded bg-white px-2 py-0.5 font-mono">
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
+        {classification.alternative_codes_considered.length > 0 && (
+          <details className="mt-2 text-[11px] text-muted">
+            <summary className="cursor-pointer">Alternatives ruled out</summary>
+            <ul className="mt-1 ml-4 list-disc space-y-1">
+              {classification.alternative_codes_considered.map((a, i) => (
+                <li key={i}>
+                  <span className="font-mono">{a.hts_code}</span> — {a.rejected_because}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+
+      {/* Duty calculation */}
+      <div>
+        <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">Duty calculation</div>
+        {dutyError ? (
+          <div className="mt-2 rounded-md border border-warn/40 bg-white px-3 py-2 text-xs text-warn">
+            {dutyError}
+          </div>
+        ) : !duty ? (
+          <div className="mt-2 text-xs text-muted">computing…</div>
+        ) : (
+          <div className="mt-2 space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-3">
+              <DetailRow label="HTS" value={duty.hts_code} mono />
+              <DetailRow label="Country of origin" value={duty.country_of_origin} />
+              <DetailRow label="Customs value" value={customsValueLabel} />
+            </div>
+
+            <div className="overflow-x-auto rounded-md border border-cardline bg-white">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-cardline bg-navy-50 text-left text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    <th className="py-2 pl-3 pr-3">Component</th>
+                    <th className="py-2 pr-3 text-right">Rate</th>
+                    <th className="py-2 pr-3 text-right">Amount (USD)</th>
+                    <th className="py-2 pr-3">Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {duty.components.map((cmp, i) => (
+                    <tr key={i} className="border-b border-cardline/60 last:border-b-0">
+                      <td className="py-2 pl-3 pr-3 text-navy">{componentLabel(cmp.kind)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums text-navy">
+                        {cmp.rate === null ? "—" : `${(cmp.rate * 100).toFixed(cmp.kind === "merchandise_processing_fee" || cmp.kind === "harbor_maintenance_fee" ? 4 : 2)}%`}
+                      </td>
+                      <td className="py-2 pr-3 text-right font-mono tabular-nums text-navy">
+                        {fmtMoney(cmp.amount_usd_cents)}
+                      </td>
+                      <td className="py-2 pr-3 text-[11px] text-muted">{cmp.source_citation}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-cardline bg-navy-50/60">
+                    <td colSpan={2} className="py-2 pl-3 pr-3 text-right font-semibold uppercase tracking-wider text-muted">
+                      Total duty owed
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono text-base font-bold tabular-nums text-accent">
+                      {fmtMoney(duty.total_duty_usd_cents)}
+                    </td>
+                    <td className="py-2 pr-3"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="text-[11px] italic text-muted">
+              Calculation: customs value × component rate, deterministic. No LLM in the duty math itself. MPF clamped to its statutory
+              min/max. HMF applied only for ocean transport.
+            </div>
+
+            {duty.warnings.length > 0 && (
+              <div className="rounded-md border border-amber/30 bg-amber-50 p-2 text-[11px] text-amber-700">
+                {duty.warnings.map((w, i) => (
+                  <div key={i}>{w}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="text-[10px] italic text-muted">
+        Source line: <span className="text-navy">{description}</span>
+      </div>
+    </div>
+  );
+}
+
+function componentLabel(kind: DutyComponent["kind"]): string {
+  switch (kind) {
+    case "base_ad_valorem":
+      return "Base ad valorem (HTS column 1)";
+    case "section_301":
+      return "Section 301 (China)";
+    case "section_232":
+      return "Section 232 (steel/aluminum)";
+    case "merchandise_processing_fee":
+      return "Merchandise Processing Fee (MPF)";
+    case "harbor_maintenance_fee":
+      return "Harbor Maintenance Fee (HMF)";
+  }
+}
+
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
+      <div className={classNames("mt-0.5 text-navy", mono && "font-mono")}>{value}</div>
+    </div>
   );
 }
 
