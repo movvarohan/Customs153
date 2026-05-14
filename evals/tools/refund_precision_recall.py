@@ -58,32 +58,45 @@ def main() -> None:
         pred_8 = strip_to_8(opp["hts_predicted_8"]) if "hts_predicted_8" in opp else strip_to_8(opp["hts_predicted"])
         surfaced.append((key, pred_8))
 
-    tp = 0
-    fp = 0
+    # Strict scoring: predicted 8-digit == truth 8-digit.
+    # Lenient scoring: predicted is correctly-identified as misclassified
+    # (the entry is genuinely misclassified AND we surfaced it). This is
+    # what a refund-finder is actually FOR — finding misclassifications.
+    # The 8-digit-line refinement is downstream broker work.
+    tp_strict = 0
+    fp_strict = 0
+    tp_lenient = 0
+    fp_lenient = 0
     for key, pred_8 in surfaced:
         t = truth.get(key)
         if t is None:
             continue
-        if key in gt_misclassified and pred_8 == t["truth_8"]:
-            tp += 1
+        is_genuinely_misclassified = key in gt_misclassified
+        if is_genuinely_misclassified:
+            tp_lenient += 1
+            if pred_8 == t["truth_8"]:
+                tp_strict += 1
+            else:
+                fp_strict += 1
         else:
-            fp += 1
+            fp_lenient += 1
+            fp_strict += 1
 
     surfaced_keys = {k for k, _ in surfaced}
     fn = len(gt_misclassified - surfaced_keys)
 
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-    recall = tp / len(gt_misclassified) if len(gt_misclassified) > 0 else 0.0
+    p_strict = tp_strict / (tp_strict + fp_strict) if (tp_strict + fp_strict) > 0 else 0.0
+    r_strict = tp_strict / len(gt_misclassified) if len(gt_misclassified) > 0 else 0.0
+    p_lenient = tp_lenient / (tp_lenient + fp_lenient) if (tp_lenient + fp_lenient) > 0 else 0.0
+    r_lenient = tp_lenient / len(gt_misclassified) if len(gt_misclassified) > 0 else 0.0
 
-    print(f"sample           : {sample_path}")
-    print(f"findings         : {findings_path}")
-    print(f"ground-truth misclassifications : {len(gt_misclassified)}")
-    print(f"surfaced (TP+FP)                : {len(surfaced)}")
-    print(f"  TP (correct pred, right call) : {tp}")
-    print(f"  FP (wrong call OR wrong pred) : {fp}")
-    print(f"  FN (missed)                   : {fn}")
-    print(f"precision : {precision*100:.1f}%")
-    print(f"recall    : {recall*100:.1f}%")
+    print(f"sample   : {sample_path}")
+    print(f"findings : {findings_path}")
+    print(f"  GT misclassifications : {len(gt_misclassified)}")
+    print(f"  surfaced              : {len(surfaced)}")
+    print(f"  FN (missed)           : {fn}")
+    print(f"  STRICT (pred 8d == truth 8d) : TP={tp_strict} FP={fp_strict}  precision={p_strict*100:.1f}%  recall={r_strict*100:.1f}%")
+    print(f"  LENIENT (correctly flagged)  : TP={tp_lenient} FP={fp_lenient}  precision={p_lenient*100:.1f}%  recall={r_lenient*100:.1f}%")
 
 
 if __name__ == "__main__":
