@@ -45,10 +45,32 @@ interface PSCFindings {
   notes: string[];
 }
 
+interface LiveCounters {
+  total_lines: number;
+  done: number;
+  agreements: number;
+  opportunities: number;
+  uncertain: number;
+  failures: number;
+  recoverable_so_far_cents: number;
+}
+
+const ZERO_COUNTERS: LiveCounters = {
+  total_lines: 0,
+  done: 0,
+  agreements: 0,
+  opportunities: 0,
+  uncertain: 0,
+  failures: 0,
+  recoverable_so_far_cents: 0,
+};
+
 export default function FindRefundsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [running, setRunning] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [importer, setImporter] = useState<string | null>(null);
+  const [counters, setCounters] = useState<LiveCounters>(ZERO_COUNTERS);
   const [findings, setFindings] = useState<PSCFindings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -59,6 +81,8 @@ export default function FindRefundsPage() {
     setFindings(null);
     setError(null);
     setStatusMessage("");
+    setImporter(null);
+    setCounters(ZERO_COUNTERS);
   }, []);
 
   const start = useCallback(async () => {
@@ -80,11 +104,31 @@ export default function FindRefundsPage() {
       }
       for await (const evt of readNDJSON<{ type: string; [k: string]: unknown }>(res)) {
         setElapsedMs(Date.now() - t0);
-        if (evt.type === "status") setStatusMessage(String(evt.message));
-        else if (evt.type === "done") {
+        if (evt.type === "status") {
+          setStatusMessage(String(evt.message));
+          if (typeof evt.importer === "string") setImporter(evt.importer);
+          if (typeof evt.total_lines === "number") {
+            setCounters((c) => ({ ...c, total_lines: evt.total_lines as number }));
+          }
+        } else if (evt.type === "line_analyzed") {
+          const outcome = (evt.outcome as { kind: string; recoverable_usd_cents?: number }) ?? { kind: "agreement" };
+          setCounters((c) => {
+            const next = { ...c, done: c.done + 1 };
+            if (outcome.kind === "agreement") next.agreements = c.agreements + 1;
+            else if (outcome.kind === "opportunity") {
+              next.opportunities = c.opportunities + 1;
+              next.recoverable_so_far_cents = c.recoverable_so_far_cents + (outcome.recoverable_usd_cents ?? 0);
+            } else if (outcome.kind === "uncertain") next.uncertain = c.uncertain + 1;
+            else if (outcome.kind === "failure") next.failures = c.failures + 1;
+            return next;
+          });
+          setStatusMessage(`Analyzing line ${(evt.line_global_index as number) + 1} of ${evt.total_lines}…`);
+        } else if (evt.type === "done") {
           setFindings(evt.findings as PSCFindings);
           setStatusMessage("Done.");
-        } else if (evt.type === "error") setError(String(evt.message));
+        } else if (evt.type === "error") {
+          setError(String(evt.message));
+        }
       }
       setElapsedMs(Date.now() - t0);
     } catch (err) {
@@ -173,16 +217,50 @@ export default function FindRefundsPage() {
 
       {(running || error || findings) && (
         <div className="rounded-card border border-cardline bg-white p-6 shadow-card">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">Status</div>
+          <div className="flex items-start justify-between gap-6">
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+                {findings ? "Analysis complete" : "In progress"}
+              </div>
               <div className="mt-1 flex items-center gap-2 text-base text-navy">
                 {running && <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />}
-                <span>{error ? `Error: ${error}` : statusMessage || "Starting…"}</span>
+                <span className="truncate">{error ? `Error: ${error}` : statusMessage || "Starting…"}</span>
+              </div>
+              {importer && (
+                <div className="mt-1 text-xs text-muted">Importer: <span className="text-navy">{importer}</span></div>
+              )}
+            </div>
+            {elapsedMs > 0 && (
+              <div className="shrink-0 text-right text-xs text-muted">
+                Elapsed {(elapsedMs / 1000).toFixed(1)}s
+              </div>
+            )}
+          </div>
+
+          {counters.total_lines > 0 && (
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-wider text-muted">
+                <span>Lines analyzed</span>
+                <span>{counters.done} of {counters.total_lines}</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-navy-50">
+                <div
+                  className="h-full rounded-full bg-accent transition-[width] duration-300"
+                  style={{ width: `${Math.min(100, (counters.done / counters.total_lines) * 100)}%` }}
+                />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                <LiveStat label="Agreements" value={counters.agreements} />
+                <LiveStat label="Opportunities" value={counters.opportunities} accent />
+                <LiveStat label="Uncertain" value={counters.uncertain} />
+                <LiveStat
+                  label="Recoverable so far"
+                  value={fmtMoney(counters.recoverable_so_far_cents)}
+                  accent
+                />
               </div>
             </div>
-            {elapsedMs > 0 && <div className="text-xs text-muted">Elapsed {(elapsedMs / 1000).toFixed(1)}s</div>}
-          </div>
+          )}
         </div>
       )}
 
@@ -282,10 +360,12 @@ export default function FindRefundsPage() {
                       </div>
                     </div>
 
-                    <details className="mt-4 text-sm">
-                      <summary className="cursor-pointer font-semibold text-navy">Why we believe this is misclassified</summary>
-                      <div className="mt-2 whitespace-pre-line text-muted">{opp.reasoning_summary}</div>
-                    </details>
+                    <div className="mt-4">
+                      <div className="text-sm font-semibold text-navy">Why we believe this is misclassified</div>
+                      <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-muted">
+                        {opp.reasoning_summary}
+                      </p>
+                    </div>
 
                     <div className="mt-4 border-t border-cardline pt-3 text-[11px] italic text-muted">
                       This finding requires review by a licensed customs broker before filing a Post Summary Correction.
@@ -345,6 +425,22 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
     <div>
       <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
       <div className={classNames("mt-0.5 truncate font-semibold", accent ? "text-xl text-accent" : "text-navy")}>{value}</div>
+    </div>
+  );
+}
+
+function LiveStat({ label, value, accent }: { label: string; value: number | string; accent?: boolean }) {
+  return (
+    <div className="rounded-md border border-cardline bg-navy-50 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
+      <div
+        className={classNames(
+          "mt-0.5 font-semibold tabular-nums",
+          accent ? "text-accent" : "text-navy",
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }
