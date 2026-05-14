@@ -12,16 +12,25 @@ import { classify, type ClassifyTrace } from "@/core/agents/classifier";
 import { CLASSIFIER_PROMPT_VERSION } from "@/core/agents/prompts/classifier-system";
 import type { ClassificationResultT } from "@/core/schemas/classification";
 
+// New gold schema (post-rebuild): every case carries a verification_status
+// and an explicit `source`. Cases marked `unverifiable` are kept in the file
+// but excluded from accuracy metrics (they live alongside `needs_human_review.jsonl`).
 const GoldCase = z.object({
+  id: z.string().optional(),
   description: z.string(),
   expected_hts_8: z.string(),
   expected_hts_10: z.string().nullable(),
   notes: z.string(),
   source: z.string(),
-  ambiguous: z.boolean(),
-  /** When true, any 8-digit code in acceptable_hts_8 counts as a match. */
-  disputed: z.boolean().default(false),
-  acceptable_hts_8: z.array(z.string()).default([]),
+  gri_rule: z.string().optional(),
+  verification_status: z.enum(["verified", "corrected", "disputed", "unverifiable"]).default("verified"),
+  /** Multiple acceptable codes — populated for disputed cases. */
+  accept_set: z.array(z.string()).default([]),
+  prior_expected_hts_8: z.string().optional(),
+  // Backwards-compat with the old schema (still readable):
+  ambiguous: z.boolean().optional(),
+  disputed: z.boolean().optional(),
+  acceptable_hts_8: z.array(z.string()).optional(),
 });
 type GoldCaseT = z.infer<typeof GoldCase>;
 
@@ -77,8 +86,11 @@ async function main(): Promise<void> {
   const lines = (await fs.readFile("evals/hts-classification/gold.jsonl", "utf8"))
     .split("\n")
     .filter((l) => l.trim().length > 0);
-  const cases = lines.map((l) => GoldCase.parse(JSON.parse(l)));
-  console.log(`loaded ${cases.length} gold cases (${cases.filter((c) => c.disputed).length} disputed)`);
+  const allCases = lines.map((l) => GoldCase.parse(JSON.parse(l)));
+  const skipped = allCases.filter((c) => c.verification_status === "unverifiable");
+  const cases = allCases.filter((c) => c.verification_status !== "unverifiable");
+  const disputedCount = cases.filter((c) => c.verification_status === "disputed" || c.disputed).length;
+  console.log(`loaded ${allCases.length} cases; scoring ${cases.length} (skipped ${skipped.length} unverifiable, ${disputedCount} disputed)`);
   console.log(`model: ${ctx.config.defaultModel}`);
   console.log(`prompt version: ${CLASSIFIER_PROMPT_VERSION}\n`);
 
@@ -196,8 +208,9 @@ async function main(): Promise<void> {
         console.log(`    - ${m}`);
       }
     }
-    if (r.case.disputed) {
-      console.log(`  disputed    : acceptable=[${r.case.acceptable_hts_8.join(", ")}]`);
+    if (r.case.verification_status === "disputed" || r.case.disputed) {
+      const accept = r.case.accept_set.length > 0 ? r.case.accept_set : (r.case.acceptable_hts_8 ?? []);
+      console.log(`  disputed    : accept_set=[${accept.join(", ")}]`);
     }
     if (r.prediction!.validation_warning) {
       console.log(`  warning     : ${r.prediction!.validation_warning}`);
@@ -250,10 +263,13 @@ function scoreCase(
   const exp10 = c.expected_hts_10 ? stripDigits(c.expected_hts_10) : null;
   const exp8 = stripDigits(c.expected_hts_8);
 
-  // For disputed cases, any code in acceptable_hts_8 matches at 8-digit;
-  // 10-digit matching falls back to the primary expected_hts_10 only.
-  const acceptable8 = c.disputed
-    ? new Set([exp8, ...c.acceptable_hts_8.map((a) => stripDigits(a))])
+  // For disputed cases, any code in accept_set (new schema) or
+  // acceptable_hts_8 (legacy) matches at 8-digit; 10-digit matching
+  // falls back to the primary expected_hts_10 only.
+  const acceptList = c.accept_set.length > 0 ? c.accept_set : (c.acceptable_hts_8 ?? []);
+  const isDisputed = c.verification_status === "disputed" || c.disputed === true;
+  const acceptable8 = isDisputed
+    ? new Set([exp8, ...acceptList.map((a) => stripDigits(a))])
     : new Set([exp8]);
 
   const top3 = [pred8, ...pred.alternative_codes_considered.map((a) => stripDigits(a.hts_code).slice(0, 8))];
