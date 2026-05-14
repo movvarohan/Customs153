@@ -49,6 +49,22 @@ export const ClassificationOutput = z.object({
    * Empty array if nothing was missing.
    */
   missing_inputs_for_precision: z.array(z.string()),
+  /**
+   * The level the classifier is fully committed to. Introduced in prompt
+   * v3.2 to let the model honestly decline a guess when the deciding
+   * attribute between candidate 8-digit lines is genuinely absent from
+   * the input.
+   *
+   *   "10" — committed at 10-digit (statistical suffix included). Default.
+   *   "8"  — committed at 8-digit; 10-digit suffix is best-effort.
+   *   "6"  — committed at 6-digit. Returned when the 8-digit pick depends
+   *          on a value tier, fiber-content %, material split, dimensional
+   *          threshold, etc. that the description does not specify. In
+   *          this case hts_code MUST end ".00.00" (e.g. 4202.21.00.00)
+   *          and missing_inputs_for_precision MUST list the specific
+   *          deciding attribute.
+   */
+  precision_level: z.enum(["6", "8", "10"]).default("10"),
   confidence: ConfidenceLevel,
 });
 

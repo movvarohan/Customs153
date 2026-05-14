@@ -41,14 +41,37 @@ interface CaseResult {
   /** Stripped-digit normalized form for matching. */
   predicted_10_digits: string | null;
   predicted_8_digits: string | null;
+  /** First 6 digits of the prediction. */
+  predicted_6_digits: string | null;
   expected_10_digits: string | null;
   expected_8_digits: string;
+  /** First 6 digits of the expected 8-digit code. */
+  expected_6_digits: string;
   /** Top-3 8-digit predictions: predicted + alternative_codes_considered (8-digit). */
   top3_8_digits: string[];
+  /**
+   * Precision level the classifier claimed: "10" / "8" / "6" (v3.2+).
+   * Older v3.1 predictions don't carry this field; treat as "10" by default.
+   */
+  predicted_precision_level: "10" | "8" | "6";
+  /** True when precision_level=="6" and the 6-digit prefix matches expected. */
+  honest_six_digit_fallback: boolean;
   matches: {
+    /** Correct at 10-digit. */
     top1_10: boolean;
+    /** Correct at 8-digit (existing metric, unchanged). */
     top1_8: boolean;
+    /** Any of top1 + alternatives matched at 8-digit. */
     top3_8: boolean;
+    /**
+     * Correct at 6-digit. A prediction counts as 6-digit-correct when:
+     *   (a) the 8-digit also matched (8-correct implies 6-correct), OR
+     *   (b) precision_level == "6" AND the 6-digit prefix matches expected
+     *       AND missing_inputs_for_precision is non-empty
+     *       (the honest fallback case).
+     */
+    top1_6: boolean;
+    /** First two digits match. */
     chapter: boolean;
   };
   /** Did every citation appear in the retrieved candidate set? */
@@ -114,8 +137,18 @@ async function main(): Promise<void> {
         predicted_8_digits: null,
         expected_10_digits: c.expected_hts_10 ? stripDigits(c.expected_hts_10) : null,
         expected_8_digits: stripDigits(c.expected_hts_8),
+        predicted_6_digits: null,
+        expected_6_digits: stripDigits(c.expected_hts_8).slice(0, 6),
         top3_8_digits: [],
-        matches: { top1_10: false, top1_8: false, top3_8: false, chapter: false },
+        predicted_precision_level: "10",
+        honest_six_digit_fallback: false,
+        matches: {
+          top1_10: false,
+          top1_8: false,
+          top3_8: false,
+          top1_6: false,
+          chapter: false,
+        },
         citations_grounded: false,
       });
       process.stdout.write(`ERROR  ${msg.slice(0, 80)}\n`);
@@ -130,8 +163,10 @@ async function main(): Promise<void> {
   const top1_10 = scored.filter((r) => r.matches.top1_10).length;
   const top1_8 = scored.filter((r) => r.matches.top1_8).length;
   const top3_8 = scored.filter((r) => r.matches.top3_8).length;
+  const top1_6 = scored.filter((r) => r.matches.top1_6).length;
   const chapter = scored.filter((r) => r.matches.chapter).length;
   const grounded = scored.filter((r) => r.citations_grounded).length;
+  const honestFallbacks = scored.filter((r) => r.honest_six_digit_fallback).length;
 
   const griDist: Record<string, number> = {};
   for (const r of scored) {
@@ -139,15 +174,26 @@ async function main(): Promise<void> {
     griDist[k] = (griDist[k] ?? 0) + 1;
   }
 
-  const confByBucket: Record<"low" | "medium" | "high", { n: number; correct8: number }> = {
-    low: { n: 0, correct8: 0 },
-    medium: { n: 0, correct8: 0 },
-    high: { n: 0, correct8: 0 },
+  const precisionDist: Record<"10" | "8" | "6", number> = { "10": 0, "8": 0, "6": 0 };
+  for (const r of scored) precisionDist[r.predicted_precision_level]++;
+
+  // Confidence calibration tracks BOTH 8-digit and the new 6-digit metric, so
+  // we can see whether v3.2's high-confidence 6-digit fallbacks actually
+  // resolve to the correct 6-digit (calibration check).
+  const confByBucket: Record<
+    "low" | "medium" | "high",
+    { n: number; correct8: number; correct6: number; correctTop3_8: number }
+  > = {
+    low: { n: 0, correct8: 0, correct6: 0, correctTop3_8: 0 },
+    medium: { n: 0, correct8: 0, correct6: 0, correctTop3_8: 0 },
+    high: { n: 0, correct8: 0, correct6: 0, correctTop3_8: 0 },
   };
   for (const r of scored) {
     const c = r.prediction!.confidence;
     confByBucket[c].n++;
     if (r.matches.top1_8) confByBucket[c].correct8++;
+    if (r.matches.top1_6) confByBucket[c].correct6++;
+    if (r.matches.top3_8) confByBucket[c].correctTop3_8++;
   }
 
   const perChap: Record<string, { n: number; correct8: number }> = {};
@@ -166,18 +212,30 @@ async function main(): Promise<void> {
   console.log(`top-1 @ 10-digit    : ${top1_10}/${scored.length} (${pct(top1_10, scored.length)}%)`);
   console.log(`top-1 @ 8-digit     : ${top1_8}/${scored.length} (${pct(top1_8, scored.length)}%)`);
   console.log(`top-3 @ 8-digit     : ${top3_8}/${scored.length} (${pct(top3_8, scored.length)}%)`);
+  console.log(`top-1 @ 6-digit     : ${top1_6}/${scored.length} (${pct(top1_6, scored.length)}%)`);
+  console.log(`  of which honest 6-digit fallbacks: ${honestFallbacks}`);
   console.log(`chapter-correct top-1: ${chapter}/${scored.length} (${pct(chapter, scored.length)}%)`);
   console.log(`citation grounding   : ${grounded}/${scored.length} (${pct(grounded, scored.length)}%)`);
+
+  console.log("\nPrecision-level distribution:");
+  for (const k of ["10", "8", "6"] as const) {
+    console.log(`  ${k.padEnd(3)}  ${precisionDist[k]}`);
+  }
 
   console.log("\nGRI rule distribution:");
   for (const [k, v] of Object.entries(griDist).sort(([a], [b]) => a.localeCompare(b))) {
     console.log(`  ${k.padEnd(6)}  ${v}`);
   }
 
-  console.log("\nConfidence calibration (top-1 @ 8-digit accuracy by confidence bucket):");
+  console.log("\nConfidence calibration by bucket (n, top1@8, top3@8, top1@6):");
   for (const k of ["high", "medium", "low"] as const) {
-    const { n, correct8 } = confByBucket[k];
-    console.log(`  ${k.padEnd(6)}  n=${n}, accuracy=${n > 0 ? pct(correct8, n) : "—"}%`);
+    const { n, correct8, correct6, correctTop3_8 } = confByBucket[k];
+    console.log(
+      `  ${k.padEnd(6)}  n=${n}` +
+        `, top1@8=${n > 0 ? pct(correct8, n) : "—"}%` +
+        `, top3@8=${n > 0 ? pct(correctTop3_8, n) : "—"}%` +
+        `, top1@6=${n > 0 ? pct(correct6, n) : "—"}%`,
+    );
   }
 
   console.log("\nPer-chapter accuracy (top-1 @ 8-digit):");
@@ -237,10 +295,13 @@ async function main(): Promise<void> {
       top1_10: scored.length === 0 ? 0 : top1_10 / scored.length,
       top1_8: scored.length === 0 ? 0 : top1_8 / scored.length,
       top3_8: scored.length === 0 ? 0 : top3_8 / scored.length,
+      top1_6: scored.length === 0 ? 0 : top1_6 / scored.length,
+      honest_six_digit_fallbacks: honestFallbacks,
       chapter_top1: scored.length === 0 ? 0 : chapter / scored.length,
       citation_grounding: scored.length === 0 ? 0 : grounded / scored.length,
     },
     gri_distribution: griDist,
+    precision_level_distribution: precisionDist,
     confidence_calibration: confByBucket,
     per_chapter: perChap,
     results,
@@ -260,8 +321,10 @@ function scoreCase(
 ): CaseResult {
   const pred10 = stripDigits(pred.hts_code);
   const pred8 = stripDigits(pred.hts_code_8);
+  const pred6 = pred8.slice(0, 6);
   const exp10 = c.expected_hts_10 ? stripDigits(c.expected_hts_10) : null;
   const exp8 = stripDigits(c.expected_hts_8);
+  const exp6 = exp8.slice(0, 6);
 
   // For disputed cases, any code in accept_set (new schema) or
   // acceptable_hts_8 (legacy) matches at 8-digit; 10-digit matching
@@ -271,11 +334,31 @@ function scoreCase(
   const acceptable8 = isDisputed
     ? new Set([exp8, ...acceptList.map((a) => stripDigits(a))])
     : new Set([exp8]);
+  const acceptable6 = new Set<string>([exp6, ...Array.from(acceptable8).map((s) => s.slice(0, 6))]);
 
   const top3 = [pred8, ...pred.alternative_codes_considered.map((a) => stripDigits(a.hts_code).slice(0, 8))];
 
   const candidateCodes = new Set(trace.candidates.map((c) => c.htsCode));
   const citationsGrounded = pred.citations.every((c) => candidateCodes.has(c));
+
+  // v3.2 introduced precision_level. Older predictions don't have it; default
+  // to "10" (existing 8-digit-matching behaviour).
+  const precisionLevel: "10" | "8" | "6" =
+    (pred as unknown as { precision_level?: "10" | "8" | "6" }).precision_level ?? "10";
+
+  // Honest 6-digit fallback: precision_level "6", code ends ".00.00", missing
+  // inputs declared, AND the 6-digit prefix matches expected. This is the
+  // exact case the v3.2 prompt change is designed to credit.
+  const honestSixDigitFallback =
+    precisionLevel === "6" &&
+    pred8.endsWith("00") &&
+    pred10.endsWith("000000".slice(0, 4)) &&
+    pred.missing_inputs_for_precision.length > 0 &&
+    acceptable6.has(pred6);
+
+  const top1_8 = acceptable8.has(pred8);
+  // 6-digit credit: 8-correct implies 6-correct, OR the honest fallback.
+  const top1_6 = top1_8 || honestSixDigitFallback;
 
   return {
     case: c,
@@ -283,13 +366,18 @@ function scoreCase(
     error: null,
     predicted_10_digits: pred10,
     predicted_8_digits: pred8,
+    predicted_6_digits: pred6,
     expected_10_digits: exp10,
     expected_8_digits: exp8,
+    expected_6_digits: exp6,
     top3_8_digits: top3,
+    predicted_precision_level: precisionLevel,
+    honest_six_digit_fallback: honestSixDigitFallback,
     matches: {
       top1_10: exp10 !== null && pred10 === exp10,
-      top1_8: acceptable8.has(pred8),
+      top1_8,
       top3_8: top3.some((p) => acceptable8.has(p)),
+      top1_6,
       chapter: pred8.slice(0, 2) === exp8.slice(0, 2),
     },
     citations_grounded: citationsGrounded,

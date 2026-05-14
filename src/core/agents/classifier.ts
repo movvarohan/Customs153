@@ -73,6 +73,12 @@ const TOOL_INPUT_SCHEMA = {
       type: "string",
       enum: ["low", "medium", "high"],
     },
+    precision_level: {
+      type: "string",
+      enum: ["10", "8", "6"],
+      description:
+        "The level you are fully committed to: '10' = full 10-digit pick (default), '8' = committed at 8-digit and 10-digit suffix is best-effort, '6' = honest 6-digit fallback (hts_code MUST end '.00.00', hts_code_8 MUST end '.00', missing_inputs_for_precision MUST list the deciding attribute). See the 'Honest 6-digit fallback' section in the system prompt for when to use '6'.",
+    },
     gri_rule_applied: {
       type: "string",
       enum: ["1", "2(a)", "2(b)", "3(a)", "3(b)", "3(c)", "4", "5(a)", "5(b)", "6"],
@@ -80,12 +86,12 @@ const TOOL_INPUT_SCHEMA = {
     },
     hts_code_8: {
       type: "string",
-      description: "Same code truncated to 8 digits, dotted XXXX.XX.XX",
+      description: "Same code truncated to 8 digits, dotted XXXX.XX.XX. When precision_level is '6', this ends in '.00'.",
       pattern: "^\\d{4}\\.\\d{2}\\.\\d{2}$",
     },
     hts_code: {
       type: "string",
-      description: "10-digit HTS code in dotted XXXX.XX.XX.XX form. Write this LAST, after the reasoning. It must be consistent with the code(s) you cited in `reasoning`.",
+      description: "10-digit HTS code in dotted XXXX.XX.XX.XX form. Write this LAST, after the reasoning. It must be consistent with the code(s) you cited in `reasoning`. When precision_level is '6', this ends in '.00.00'.",
       pattern: "^\\d{4}\\.\\d{2}\\.\\d{2}\\.\\d{2}$",
     },
   },
@@ -95,6 +101,7 @@ const TOOL_INPUT_SCHEMA = {
     "alternative_codes_considered",
     "missing_inputs_for_precision",
     "confidence",
+    "precision_level",
     "gri_rule_applied",
     "hts_code_8",
     "hts_code",
