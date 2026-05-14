@@ -192,25 +192,54 @@ export default function FindRefundsPage() {
                 if (f) onPickFile(f);
               }}
             />
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-navy-50 text-navy">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path d="M14 3v5h5M9 14h6M9 18h6M9 10h2M5 21h14a2 2 0 002-2V8l-5-5H5a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-navy-50 text-navy">
+              {/* Spreadsheet / grid icon — visually distinct from the upload-cloud on /process-invoice */}
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <rect x="3" y="4" width="18" height="16" rx="1.5" />
+                <path d="M3 9h18M3 14h18M9 4v16M15 4v16" />
               </svg>
             </div>
-            <div className="text-sm font-semibold text-navy">Choose your historical entries JSON</div>
-            <div className="mt-1 text-xs text-muted">
-              The format produced by an ACE Importer Portal export, or by your broker. See{" "}
-              <code className="rounded bg-navy-50 px-1 text-[11px]">data/sample-entries/</code> for sample files.
+            <div className="text-sm font-semibold text-navy">Upload your historical entries</div>
+            <div className="mt-1 max-w-md text-xs leading-relaxed text-muted">
+              JSON exported from your broker's filing system, or from the CBP ACE Importer Portal — typically
+              6–24 months of entries with the line items, filed HTS codes, and duty amounts. Each line is
+              re-classified from scratch and any duty overpayment is surfaced here.
             </div>
-            {file && <div className="mt-4 text-sm text-accent-700">Ready: {file.name}</div>}
+            <div className="mt-3 text-[11px] text-muted">
+              Need a sample? See{" "}
+              <code className="rounded bg-navy-50 px-1 text-[11px]">data/sample-entries/</code> in the repo.
+            </div>
           </label>
+
+          {/* Confirmation card with inline action */}
           {file && !running && (
-            <button
-              onClick={start}
-              className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent-700"
-            >
-              Run refund analysis →
-            </button>
+            <div className="rounded-card border border-cardline bg-white p-4 shadow-card">
+              <div className="flex items-center gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-accent-50 text-accent-700">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                    <rect x="3" y="4" width="18" height="16" rx="1.5" />
+                    <path d="M3 9h18M3 14h18M9 4v16M15 4v16" />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-navy">{file.name}</div>
+                  <div className="text-xs text-muted">{(file.size / 1024).toFixed(1)} KB · ready to analyze</div>
+                </div>
+                <button
+                  onClick={() => setFile(null)}
+                  className="text-xs text-muted transition hover:text-navy"
+                >
+                  change
+                </button>
+                <button
+                  onClick={start}
+                  className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent-700"
+                >
+                  Run refund analysis
+                  <span aria-hidden>→</span>
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

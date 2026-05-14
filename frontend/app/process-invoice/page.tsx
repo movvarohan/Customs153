@@ -236,64 +236,78 @@ export default function ProcessInvoicePage() {
                 />
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-md border border-cardline">
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-cardline text-left text-[11px] font-semibold uppercase tracking-wider text-muted">
-                      <th className="py-2 pr-4">#</th>
-                      <th className="py-2 pr-4">Description</th>
-                      <th className="py-2 pr-4 text-right">Qty</th>
-                      <th className="py-2 pr-4 text-right">Total ({extraction.currency})</th>
-                      <th className="py-2 pr-4">HTS (8d)</th>
-                      <th className="py-2 pr-4">Confidence</th>
-                      <th className="py-2 pr-4">Notes</th>
+                    <tr className="border-b border-cardline bg-navy-50 text-left text-[11px] font-semibold uppercase tracking-wider text-muted">
+                      <th className="py-2.5 pl-4 pr-3">#</th>
+                      <th className="py-2.5 pr-3">Description</th>
+                      <th className="py-2.5 pr-3 text-right">Qty</th>
+                      <th className="py-2.5 pr-3 text-right">Total ({extraction.currency})</th>
+                      <th className="py-2.5 pr-3">HTS (8d)</th>
+                      <th className="py-2.5 pr-4">Confidence</th>
                     </tr>
                   </thead>
                   <tbody>
                     {extraction.line_items.map((li, i) => {
                       const st = lineStates[i] ?? { status: "pending" };
+                      const isClassified = st.status === "classified";
+                      const isFailed = st.status === "failed";
+                      const missing = isClassified ? st.classification.missing_inputs_for_precision : [];
                       return (
-                        <tr key={i} className="border-b border-cardline/60 align-top">
-                          <td className="py-3 pr-4 text-muted">{i + 1}</td>
-                          <td className="py-3 pr-4">
+                        <tr
+                          key={i}
+                          className={classNames(
+                            "align-top border-b border-cardline/60 transition-colors last:border-b-0",
+                            i % 2 === 1 && "bg-navy-50/30",
+                            "hover:bg-accent-50/40",
+                          )}
+                        >
+                          <td className="py-3.5 pl-4 pr-3 tabular-nums text-muted">{i + 1}</td>
+                          <td className="py-3.5 pr-3">
                             <div className="text-navy">{li.description}</div>
                             {li.material_composition && (
                               <div className="mt-0.5 text-[11px] text-muted">{li.material_composition}</div>
                             )}
-                          </td>
-                          <td className="py-3 pr-4 text-right text-navy">{li.quantity}</td>
-                          <td className="py-3 pr-4 text-right text-navy">{(li.total_value / 100).toFixed(2)}</td>
-                          <td className="py-3 pr-4 font-mono text-navy">
-                            {st.status === "classified"
-                              ? st.classification.hts_code_8
-                              : st.status === "failed"
-                                ? <span className="text-warn">FAILED</span>
-                                : <span className="inline-block h-3 w-12 animate-pulse rounded bg-navy-100" />}
-                          </td>
-                          <td className="py-3 pr-4">
-                            {st.status === "classified" ? (
-                              <ConfidenceBadge value={st.classification.confidence} />
-                            ) : st.status === "failed" ? (
-                              <span className="text-[11px] text-warn">retry exhausted</span>
-                            ) : (
-                              <span className="text-[11px] text-muted">…</span>
-                            )}
-                          </td>
-                          <td className="py-3 pr-4">
-                            {st.status === "classified" && st.classification.missing_inputs_for_precision.length > 0 && (
-                              <details className="text-xs text-muted">
-                                <summary className="cursor-pointer text-amber">
-                                  {st.classification.missing_inputs_for_precision.length} missing input{st.classification.missing_inputs_for_precision.length === 1 ? "" : "s"}
-                                </summary>
-                                <ul className="ml-3 mt-1 list-disc space-y-0.5">
-                                  {st.classification.missing_inputs_for_precision.map((m, k) => (
+                            {missing.length > 0 && (
+                              <div className="mt-2 rounded-md border border-amber/30 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                                <div className="font-semibold">
+                                  Broker should confirm: {missing.length} missing input{missing.length === 1 ? "" : "s"}
+                                </div>
+                                <ul className="ml-3 mt-0.5 list-disc space-y-0.5">
+                                  {missing.map((m, k) => (
                                     <li key={k}>{m}</li>
                                   ))}
                                 </ul>
-                              </details>
+                              </div>
                             )}
-                            {st.status === "failed" && (
-                              <span className="text-[11px] text-warn">{st.error.slice(0, 60)}…</span>
+                            {isFailed && (
+                              <div className="mt-2 rounded-md border border-warn/40 bg-white px-2 py-1.5 text-[11px] text-warn">
+                                <div className="font-semibold">Classification failed after 3 retries</div>
+                                <div className="mt-0.5 italic text-muted">{st.error.slice(0, 160)}</div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3.5 pr-3 text-right tabular-nums text-navy">{li.quantity}</td>
+                          <td className="py-3.5 pr-3 text-right tabular-nums text-navy">
+                            {(li.total_value / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3.5 pr-3 font-mono text-navy">
+                            {isClassified ? (
+                              st.classification.hts_code_8
+                            ) : isFailed ? (
+                              <span className="text-warn">—</span>
+                            ) : (
+                              <span className="inline-block h-3 w-16 animate-pulse rounded bg-navy-100" />
+                            )}
+                          </td>
+                          <td className="py-3.5 pr-4">
+                            {isClassified ? (
+                              <ConfidenceBadge value={st.classification.confidence} />
+                            ) : isFailed ? (
+                              <span className="text-[11px] font-semibold uppercase tracking-wider text-warn">failed</span>
+                            ) : (
+                              <span className="text-[11px] text-muted">…</span>
                             )}
                           </td>
                         </tr>
