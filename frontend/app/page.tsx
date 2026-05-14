@@ -19,26 +19,33 @@ export default function Landing() {
             HTS codes, and surface every Post Summary Correction with quantified savings — with the full legal reasoning attached. Then a
             licensed broker reviews and files for you.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-wrap items-center gap-6">
             <Link
               href="/find-refunds"
-              className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-700 focus:outline-none focus:ring-2 focus:ring-accent-700/30"
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-6 py-4 text-base font-semibold text-white shadow-card transition hover:bg-accent-700 focus:outline-none focus:ring-2 focus:ring-accent-700/30"
             >
-              Run a refund analysis →
+              Run a refund analysis
+              <span aria-hidden>→</span>
             </Link>
             <Link
               href="/process-invoice"
-              className="inline-flex items-center gap-2 rounded-md border border-cardline bg-white px-5 py-3 text-sm font-semibold text-navy transition hover:bg-navy-50"
+              className="inline-flex items-center gap-1 text-sm font-medium text-muted transition hover:text-navy"
             >
-              Process a single invoice
+              or process a single invoice
+              <span aria-hidden className="transition group-hover:translate-x-0.5">›</span>
             </Link>
           </div>
         </div>
 
         {/* Visual: PDF cover-page-style card */}
         <div className="rounded-card border border-cardline bg-white p-6 shadow-card">
-          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-navy">
-            Sample finding
+          <div className="mb-3 flex items-center gap-2">
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700 ring-1 ring-inset ring-amber-600/20">
+              Example · synthetic data
+            </span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted">
+              what a finding looks like
+            </span>
           </div>
           <div className="mb-1 text-2xl font-bold text-navy">$582.90 recoverable</div>
           <div className="mb-4 text-xs text-muted">CN-AMA-7195891-13 · entry date 2025-07-31 · within PSC window · confidence high</div>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Nav } from "@/components/Nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,18 +19,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="inline-block h-2 w-2 rounded-sm bg-accent" aria-hidden />
               <span className="font-semibold tracking-[0.18em] text-[12px] uppercase">Customs-Agent</span>
             </Link>
-            <nav className="flex items-center gap-6 text-sm text-muted">
-              <Link href="/process-invoice" className="hover:text-navy">Process invoice</Link>
-              <Link href="/find-refunds" className="hover:text-navy">Find refunds</Link>
-              <Link href="/" className="hover:text-navy">About</Link>
-            </nav>
+            <Nav />
           </div>
         </header>
         <main className="mx-auto max-w-6xl px-6 py-10">{children}</main>
         <footer className="border-t border-cardline">
           <div className="mx-auto max-w-6xl px-6 py-6 text-xs text-muted">
-            customs-agent is an AI operations platform for customs work. We pair with a licensed customs broker who exercises responsible
-            supervision and control under 19 CFR Part 111. We do not provide legal advice and are not ourselves a licensed customs broker.
+            customs-agent · AI-native customs operations · paired with a licensed customs broker partner under 19 CFR Part 111
           </div>
         </footer>
       </body>

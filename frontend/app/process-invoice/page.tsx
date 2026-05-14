@@ -137,7 +137,7 @@ export default function ProcessInvoicePage() {
         </p>
       </header>
 
-      {!extraction && (
+      {!extraction && !file && (
         <label
           onDragOver={(e) => {
             e.preventDefault();
@@ -146,7 +146,7 @@ export default function ProcessInvoicePage() {
           onDragLeave={() => setDragActive(false)}
           onDrop={onDrop}
           className={classNames(
-            "flex cursor-pointer flex-col items-center justify-center rounded-card border-2 border-dashed bg-white p-12 text-center transition",
+            "flex cursor-pointer flex-col items-center justify-center rounded-card border-2 border-dashed bg-white p-10 text-center transition",
             dragActive ? "border-accent bg-accent-50" : "border-cardline hover:border-accent/40",
           )}
         >
@@ -166,26 +166,39 @@ export default function ProcessInvoicePage() {
           </div>
           <div className="text-sm font-semibold text-navy">Drag a PDF here, or click to choose a file</div>
           <div className="mt-1 text-xs text-muted">PDF up to 10 pages, or PNG / JPG.</div>
-          {file && <div className="mt-4 text-sm text-accent-700">Ready: {file.name} ({(file.size / 1024).toFixed(1)} KB)</div>}
         </label>
       )}
 
-      {file && !running && !extraction && (
-        <div className="flex items-center gap-3">
-          <button
-            onClick={start}
-            className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-700"
-          >
-            Process this invoice →
-          </button>
-          <button
-            onClick={() => {
-              setFile(null);
-            }}
-            className="text-sm text-muted hover:text-navy"
-          >
-            Choose a different file
-          </button>
+      {/* File confirmation card with inline action */}
+      {file && !extraction && !running && (
+        <div className="rounded-card border border-cardline bg-white p-4 shadow-card">
+          <div className="flex items-center gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-accent-50 text-accent-700">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M14 3v5h5M5 21h14a2 2 0 002-2V8l-5-5H5a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-navy">{file.name}</div>
+              <div className="text-xs text-muted">
+                {(file.size / 1024).toFixed(1)} KB · ready to process
+              </div>
+            </div>
+            <button
+              onClick={() => setFile(null)}
+              className="text-xs text-muted transition hover:text-navy"
+              aria-label="Choose a different file"
+            >
+              change
+            </button>
+            <button
+              onClick={start}
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-700"
+            >
+              Process this invoice
+              <span aria-hidden>→</span>
+            </button>
+          </div>
         </div>
       )}
 
