@@ -65,8 +65,41 @@ const ZERO_COUNTERS: LiveCounters = {
   recoverable_so_far_cents: 0,
 };
 
+interface HistoricalEntriesLike {
+  importer?: string;
+  period_start?: string;
+  period_end?: string;
+  entries: unknown[];
+}
+
+function mergeHistoricalEntries(parsed: HistoricalEntriesLike[]): {
+  body: HistoricalEntriesLike;
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const importers = Array.from(new Set(parsed.map((p) => p.importer).filter(Boolean) as string[]));
+  if (importers.length > 1) {
+    warnings.push(
+      `Files name different importers (${importers.join(", ")}). Using "${importers[0]}" — verify the files belong to the same importer.`,
+    );
+  }
+  const starts = parsed.map((p) => p.period_start).filter(Boolean) as string[];
+  const ends = parsed.map((p) => p.period_end).filter(Boolean) as string[];
+  const entries = parsed.flatMap((p) => p.entries);
+  const startMin = starts.length > 0 ? starts.sort()[0]! : null;
+  const endMax = ends.length > 0 ? ends.sort()[ends.length - 1]! : null;
+  const body: HistoricalEntriesLike = {
+    importer: importers[0] ?? "Unknown importer",
+    entries,
+    ...(startMin !== null ? { period_start: startMin } : {}),
+    ...(endMax !== null ? { period_end: endMax } : {}),
+  };
+  return { body, warnings };
+}
+
 export default function FindRefundsPage() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [importer, setImporter] = useState<string | null>(null);
@@ -76,23 +109,52 @@ export default function FindRefundsPage() {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [downloading, setDownloading] = useState(false);
 
-  const onPickFile = useCallback((f: File) => {
-    setFile(f);
+  const addFiles = useCallback((incoming: FileList | File[]) => {
+    const arr = Array.from(incoming);
+    if (arr.length === 0) return;
+    setFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}|${f.size}|${f.lastModified}`));
+      const additions = arr.filter((f) => !seen.has(`${f.name}|${f.size}|${f.lastModified}`));
+      return [...prev, ...additions];
+    });
     setFindings(null);
     setError(null);
     setStatusMessage("");
     setImporter(null);
     setCounters(ZERO_COUNTERS);
+    setParseWarnings([]);
+  }, []);
+
+  const removeFile = useCallback((idx: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+    setParseWarnings([]);
   }, []);
 
   const start = useCallback(async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setRunning(true);
     setError(null);
+    setParseWarnings([]);
     const t0 = Date.now();
     try {
-      const text = await file.text();
-      const body = JSON.parse(text);
+      // Parse + merge all JSON files client-side.
+      const parsed: HistoricalEntriesLike[] = [];
+      for (const f of files) {
+        try {
+          const text = await f.text();
+          const obj = JSON.parse(text) as HistoricalEntriesLike;
+          if (!obj || !Array.isArray(obj.entries)) {
+            setError(`${f.name}: missing "entries" array — not a valid HistoricalEntries export.`);
+            return;
+          }
+          parsed.push(obj);
+        } catch (e) {
+          setError(`${f.name}: invalid JSON (${e instanceof Error ? e.message : String(e)})`);
+          return;
+        }
+      }
+      const { body, warnings } = mergeHistoricalEntries(parsed);
+      setParseWarnings(warnings);
       const res = await fetch(`${API_BASE_URL}/api/find-refunds`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -136,7 +198,7 @@ export default function FindRefundsPage() {
     } finally {
       setRunning(false);
     }
-  }, [file]);
+  }, [files]);
 
   const downloadPdf = useCallback(async () => {
     if (!findings) return;
@@ -186,10 +248,11 @@ export default function FindRefundsPage() {
             <input
               type="file"
               accept=".json"
+              multiple
               className="sr-only"
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onPickFile(f);
+                if (e.target.files) addFiles(e.target.files);
+                e.target.value = "";
               }}
             />
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-navy-50 text-navy">
@@ -206,31 +269,56 @@ export default function FindRefundsPage() {
               re-classified from scratch and any duty overpayment is surfaced here.
             </div>
             <div className="mt-3 text-[11px] text-muted">
-              Need a sample? See{" "}
+              Upload multiple JSON files to combine periods. Need a sample? See{" "}
               <code className="rounded bg-navy-50 px-1 text-[11px]">data/sample-entries/</code> in the repo.
             </div>
           </label>
 
-          {/* Confirmation card with inline action */}
-          {file && !running && (
+          {/* File list + confirmation card */}
+          {files.length > 0 && !running && (
             <div className="rounded-card border border-cardline bg-white p-4 shadow-card">
-              <div className="flex items-center gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-accent-50 text-accent-700">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8}>
-                    <rect x="3" y="4" width="18" height="16" rx="1.5" />
-                    <path d="M3 9h18M3 14h18M9 4v16M15 4v16" />
-                  </svg>
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+                  Ready to analyze · {files.length} file{files.length === 1 ? "" : "s"}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold text-navy">{file.name}</div>
-                  <div className="text-xs text-muted">{(file.size / 1024).toFixed(1)} KB · ready to analyze</div>
-                </div>
-                <button
-                  onClick={() => setFile(null)}
-                  className="text-xs text-muted transition hover:text-navy"
-                >
-                  change
-                </button>
+                <label className="cursor-pointer text-xs font-medium text-accent-700 transition hover:text-accent">
+                  + add more
+                  <input
+                    type="file"
+                    accept=".json"
+                    multiple
+                    className="sr-only"
+                    onChange={(e) => {
+                      if (e.target.files) addFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              <ul className="mb-4 divide-y divide-cardline/60">
+                {files.map((f, i) => (
+                  <li key={`${f.name}-${i}`} className="flex items-center gap-3 py-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent-50 text-accent-700">
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                        <rect x="3" y="4" width="18" height="16" rx="1.5" />
+                        <path d="M3 9h18M3 14h18M9 4v16M15 4v16" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm text-navy">{f.name}</div>
+                      <div className="text-[11px] text-muted">{(f.size / 1024).toFixed(1)} KB</div>
+                    </div>
+                    <button
+                      onClick={() => removeFile(i)}
+                      className="text-xs text-muted transition hover:text-warn"
+                      aria-label={`Remove ${f.name}`}
+                    >
+                      remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex justify-end">
                 <button
                   onClick={start}
                   className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent-700"
@@ -239,6 +327,14 @@ export default function FindRefundsPage() {
                   <span aria-hidden>→</span>
                 </button>
               </div>
+            </div>
+          )}
+
+          {parseWarnings.length > 0 && (
+            <div className="rounded-md border border-amber/30 bg-amber-50 p-3 text-xs text-amber-700">
+              {parseWarnings.map((w, i) => (
+                <div key={i}>{w}</div>
+              ))}
             </div>
           )}
         </div>
@@ -356,14 +452,14 @@ export default function FindRefundsPage() {
               </button>
               <button
                 onClick={() => {
-                  setFile(null);
+                  setFiles([]);
                   setFindings(null);
                   setStatusMessage("");
                   setElapsedMs(0);
                 }}
                 className="text-sm text-muted hover:text-navy"
               >
-                Start over with a different file
+                Start over with different files
               </button>
             </div>
           </div>
