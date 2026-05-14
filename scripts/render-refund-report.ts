@@ -287,6 +287,22 @@ async function renderPdf(opts: RenderOptions, f: PSCFindingsT): Promise<void> {
       );
       doc.moveDown(0.4);
     }
+    for (const fail of f.failures) {
+      ensureSpace(doc, 45);
+      doc.fillColor(RED).font("Helvetica-Bold").fontSize(9).text(
+        `${fail.entry_number}  ·  line ${fail.line_index + 1}  ·  CLASSIFICATION FAILED — broker review required`,
+        { width: 504 },
+      );
+      doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(
+        `${truncate(fail.line_description, 90)}`,
+        { width: 504 },
+      );
+      doc.fillColor(MUTED).font("Helvetica-Oblique").fontSize(8).text(
+        `error: ${truncate(fail.error, 150)}`,
+        { width: 504 },
+      );
+      doc.moveDown(0.4);
+    }
   }
 
   // Page numbers — written in a second pass AFTER all content layout is

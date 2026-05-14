@@ -77,10 +77,11 @@ async function main(): Promise<void> {
 
   console.log("\n" + "=".repeat(78));
   console.log(`  Analyzed ${findings.total_entries_analyzed} entries (${findings.total_line_items_analyzed} line items)`);
-  console.log(`  We agreed with the filed classification on ${findings.agreements} / ${findings.total_line_items_analyzed} lines`);
+  console.log(`  We agreed with the filed classification on ${findings.agreements} / ${findings.classified_ok} successfully-classified lines`);
   console.log(`  We disagreed on ${findings.disagreements} lines`);
   console.log(`  ${findings.refund_opportunities.length} refund opportunities surfaced (high+medium confidence)`);
   console.log(`  ${findings.uncertain_cases.length} uncertain cases (low confidence — broker review recommended)`);
+  console.log(`  ${findings.classification_failed} lines failed classification after retries (require manual review)`);
   console.log(`  ${findings.outside_psc_window} entries outside the PSC filing window (require protest instead)`);
   console.log("");
   console.log(`  Total recoverable: $${fmtCents(recov)}`);
@@ -121,6 +122,29 @@ async function main(): Promise<void> {
       const desc = u.line_description.length > 60 ? u.line_description.slice(0, 57) + "…" : u.line_description;
       console.log(`  ${u.entry_number} line ${u.line_index}: ${desc}`);
       console.log(`    filed ${u.hts_filed} → predicted ${u.hts_predicted}`);
+    }
+  }
+
+  // Hard accounting — every line is in exactly one bucket.
+  const accounted =
+    findings.agreements +
+    findings.refund_opportunities.length +
+    findings.uncertain_cases.length +
+    findings.classification_failed;
+  const stillDisagree = findings.disagreements - findings.refund_opportunities.length - findings.uncertain_cases.length;
+  console.log("");
+  console.log(
+    `  >>> ${findings.total_line_items_analyzed} lines: ${findings.classified_ok} classified, ${findings.classification_failed} failed, ${findings.agreements} agreed, ${findings.refund_opportunities.length} refund opportunities${stillDisagree > 0 ? `, ${stillDisagree} disagreed but no recoverable` : ""}`,
+  );
+  if (accounted !== findings.total_line_items_analyzed - Math.max(0, stillDisagree)) {
+    console.log(`  ⚠ accounting check: ${accounted} accounted vs ${findings.total_line_items_analyzed} total`);
+  }
+
+  if (findings.failures.length > 0) {
+    console.log(`\nFailed classifications (require manual review):`);
+    for (const f of findings.failures) {
+      console.log(`  ${f.entry_number} line ${f.line_index + 1}: ${f.line_description.slice(0, 70)}`);
+      console.log(`    error: ${f.error.slice(0, 150)}`);
     }
   }
 

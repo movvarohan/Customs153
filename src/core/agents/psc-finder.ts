@@ -18,6 +18,7 @@
 import { randomUUID } from "node:crypto";
 import type { AppContext } from "@/core/app-context";
 import {
+  type ClassificationFailureT,
   type HistoricalEntriesT,
   type PSCFindingsT,
   type RefundOpportunityT,
@@ -27,6 +28,7 @@ import { classify } from "./classifier";
 import { calculateDuty } from "./duty-calculator";
 import type { ClassificationResultT } from "@/core/schemas/classification";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
+import { withRetry } from "@/core/lib/retry";
 
 /** Days in the PSC window (CBP rule of thumb — 314 days post-liquidation ≈ 1y from entry). */
 const PSC_WINDOW_DAYS = 11 * 30;
@@ -111,20 +113,35 @@ export async function findRefundOpportunities(
     });
   }
 
-  // ── Fan-out: classify in parallel ───────────────────────────────────────
+  // ── Fan-out: classify in parallel, with per-line retry-with-backoff
+  // ── so transient Anthropic / Voyage 5xx don't silently drop a line.
   const classified = await mapWithConcurrency(tasks, concurrency, async (t) => {
-    const { result } = await classify(ctx, {
-      description: t.description,
-      quantity: t.quantity,
-      unit_value_usd: t.unit_value_usd_cents / 100,
-      country_of_origin: t.country_of_origin,
-    });
+    const { result } = await withRetry(
+      () =>
+        classify(ctx, {
+          description: t.description,
+          quantity: t.quantity,
+          unit_value_usd: t.unit_value_usd_cents / 100,
+          country_of_origin: t.country_of_origin,
+        }),
+      {
+        attempts: 3,
+        baseMs: 2000,
+        onRetry: (err, attempt, sleepMs) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(
+            `[psc-finder] classify retry ${attempt}/3 for ${t.entry_number}#${t.line_index} (sleep ${sleepMs}ms): ${msg.slice(0, 200)}`,
+          );
+        },
+      },
+    );
     return result;
   });
 
   // ── Assemble (sequential — fast: duty calc + bookkeeping) ──────────────
   const opportunities: RefundOpportunityT[] = [];
   const uncertain: UncertainCaseT[] = [];
+  const failures: ClassificationFailureT[] = [];
   const traces: FindRefundsResult["perLineTraces"] = [];
   const notes: string[] = [];
 
@@ -139,6 +156,12 @@ export async function findRefundOpportunities(
     if (settled.status === "rejected") {
       classifierErrors++;
       const msg = settled.reason instanceof Error ? settled.reason.message : String(settled.reason);
+      failures.push({
+        entry_number: t.entry_number,
+        line_index: t.line_index,
+        line_description: t.description,
+        error: msg,
+      });
       traces.push({
         entry_number: t.entry_number,
         line_index: t.line_index,
@@ -252,11 +275,14 @@ export async function findRefundOpportunities(
     analyzed_at: asOf.toISOString(),
     total_entries_analyzed: historical.entries.length,
     total_line_items_analyzed: tasks.length,
+    classified_ok: tasks.length - classifierErrors,
+    classification_failed: classifierErrors,
     agreements,
     disagreements,
     outside_psc_window: outsidePsc,
     refund_opportunities: opportunities,
     uncertain_cases: uncertain,
+    failures,
     total_recoverable_usd_cents: totalRecov,
     confidence_breakdown: cb,
     notes,

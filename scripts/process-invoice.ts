@@ -15,6 +15,7 @@ import { extract } from "@/core/agents/extractor";
 import { classify } from "@/core/agents/classifier";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
+import { withRetry } from "@/core/lib/retry";
 
 /** Default Anthropic-call concurrency for the per-line classifier fan-out. */
 const CLASSIFY_CONCURRENCY = Number(process.env.CLASSIFY_CONCURRENCY ?? 5);
@@ -93,26 +94,41 @@ async function main(): Promise<void> {
   const settled = await mapWithConcurrency(
     extraction.line_items,
     CLASSIFY_CONCURRENCY,
-    async (li) => {
+    async (li, idx) => {
       const coo = li.country_of_origin ?? extraction.country_of_origin;
       const t0 = Date.now();
-      const { result } = await classify(ctx, {
-        description: li.description,
-        quantity: li.quantity,
-        unit_value_usd: li.unit_value / 100,
-        ...(coo ? { country_of_origin: coo } : {}),
-      });
+      const { result } = await withRetry(
+        () =>
+          classify(ctx, {
+            description: li.description,
+            quantity: li.quantity,
+            unit_value_usd: li.unit_value / 100,
+            ...(coo ? { country_of_origin: coo } : {}),
+          }),
+        {
+          attempts: 3,
+          baseMs: 2000,
+          onRetry: (err, attempt, sleepMs) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(
+              `[process-invoice] classify retry ${attempt}/3 for line ${idx + 1} (sleep ${sleepMs}ms): ${msg.slice(0, 200)}`,
+            );
+          },
+        },
+      );
       return { result, latency_ms: Date.now() - t0 };
     },
   );
   const classifyMsSum = Date.now() - classifyT0;
   const lines: ProcessedLine[] = [];
+  const failures: Array<{ line_index: number; description: string; error: string }> = [];
   for (let i = 0; i < settled.length; i++) {
     const s = settled[i]!;
     const li = extraction.line_items[i]!;
     if (s.status === "rejected") {
       const msg = s.reason instanceof Error ? s.reason.message : String(s.reason);
-      process.stdout.write(`  [${String(i + 1).padStart(2)}/${extraction.line_items.length}] FAILED ${msg.slice(0, 70)}\n`);
+      failures.push({ line_index: i, description: li.description, error: msg });
+      process.stdout.write(`  [${String(i + 1).padStart(2)}/${extraction.line_items.length}] FAILED after retries: ${msg.slice(0, 70)}\n`);
       continue;
     }
     const result = s.value.result;
@@ -146,6 +162,16 @@ async function main(): Promise<void> {
     : `${(extraction.total_value / 100).toFixed(2)} ${extraction.currency} (no FX rate cached)`;
   console.log(`Invoice total: ${(extraction.total_value / 100).toFixed(2)} ${extraction.currency}    →    ${usdTotal}`);
   console.log("─".repeat(120));
+  console.log(
+    `>>> ${extraction.line_items.length} lines: ${lines.length} classified, ${failures.length} failed`,
+  );
+  if (failures.length > 0) {
+    console.log("Failed classifications (require manual review):");
+    for (const f of failures) {
+      console.log(`  line ${f.line_index + 1}: ${f.description.slice(0, 70)}`);
+      console.log(`    error: ${f.error.slice(0, 200)}`);
+    }
+  }
   console.log(`Wall time:      ${wallMs} ms`);
   console.log(`  extraction:    ${extractMs} ms`);
   console.log(`  classification: ${classifyMsSum} ms wall (${lines.length} lines @ concurrency=${CLASSIFY_CONCURRENCY})`);

@@ -76,16 +76,30 @@ export const UncertainCase = z.object({
 });
 export type UncertainCaseT = z.infer<typeof UncertainCase>;
 
+export const ClassificationFailure = z.object({
+  entry_number: z.string(),
+  line_index: z.number().int().nonnegative(),
+  line_description: z.string(),
+  error: z.string(),
+});
+export type ClassificationFailureT = z.infer<typeof ClassificationFailure>;
+
 export const PSCFindings = z.object({
   importer: z.string(),
   analyzed_at: z.string(),
   total_entries_analyzed: z.number().int().nonnegative(),
   total_line_items_analyzed: z.number().int().nonnegative(),
+  classified_ok: z.number().int().nonnegative().default(0),
+  classification_failed: z.number().int().nonnegative().default(0),
   agreements: z.number().int().nonnegative(),
   disagreements: z.number().int().nonnegative(),
   outside_psc_window: z.number().int().nonnegative(),
   refund_opportunities: z.array(RefundOpportunity),
   uncertain_cases: z.array(UncertainCase),
+  /** Lines that errored during classification even after retries. Surfaced
+   *  explicitly — never silently dropped. Each gets "broker review required"
+   *  treatment in the PDF appendix. */
+  failures: z.array(ClassificationFailure).default([]),
   total_recoverable_usd_cents: z.number().int(),
   confidence_breakdown: z.object({
     high_usd_cents: z.number().int(),
