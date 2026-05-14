@@ -1,11 +1,12 @@
 {
-  "version": "demo-2026-rev-7",
+  "version": "demo-2026-rev-8",
   "effective_date": "2026-01-01",
   "_disclaimer": "Demo subset only. Rates approximate actual HTSUS 2026 published rates but are NOT the source of truth; production must pull from USITC official rate tables weekly. The default_ad_valorem fallback below is intentionally conservative.",
   "fees": {
+    "_fees_source": "FY2026 (effective 2025-10-01 through 2026-09-30). MPF min/max from CBP Dec. 25-10, Federal Register July 23, 2025 (90 FR 33793). MPF rate (0.3464%) and HMF rate (0.125%) are statutory and do not adjust for inflation.",
     "mpf_rate": 0.003464,
-    "mpf_min_usd_cents": 3271,
-    "mpf_max_usd_cents": 63462,
+    "mpf_min_usd_cents": 3358,
+    "mpf_max_usd_cents": 65150,
     "hmf_rate": 0.00125
   },
   "section_301_china": {

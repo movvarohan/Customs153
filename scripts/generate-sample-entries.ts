@@ -367,11 +367,16 @@ async function main(): Promise<void> {
 
         // Compute duty_paid using the FILED HTS — so a planted misclass yields
         // genuine overpayment (since misclassified_hts has higher tariff rate).
+        // include_entry_fees: false because Box 35 ("Duty and IRS Tax") on a
+        // CBP Form 7501 is per-line duty only — MPF and HMF are reported as
+        // entry-level fees on separate ABI lines (codes 499 / 501), NOT
+        // baked into per-line duty_paid. Synthetic data must match.
         const dutyCalc = await calculateDuty(ctx, {
           hts_code: filedHts,
           country_of_origin: profile.country,
           customs_value_usd_cents: totalValueCents,
           transport_mode: "ocean",
+          include_entry_fees: false,
         });
 
         lines.push({
@@ -391,6 +396,7 @@ async function main(): Promise<void> {
         entry_date: entryDate,
         port_of_entry: profile.port,
         country_of_origin: profile.country,
+        mode_of_transport: "ocean",
         line_items: lines,
       });
     }

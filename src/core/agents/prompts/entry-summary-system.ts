@@ -17,6 +17,7 @@ Pull these fields, mapping from the form's box numbers where possible:
   2. **entry_date** — Box 4 ("Entry Date"). ISO 8601 (YYYY-MM-DD). Convert MM/DD/YYYY if printed that way.
   3. **port_of_entry** — Box 5 ("Port Code") or the port name printed on the form (e.g., "Los Angeles, CA — 2704", "Port of Long Beach"). Capture the human-readable form ("Los Angeles, CA" or "Long Beach"), not the raw 4-digit port code.
   4. **country_of_origin** — Most-common country across the line items, expressed as **ISO 3166-1 alpha-2** code (e.g., "CN", "VN", "MX"). Box 27 on Form 7501 is per-line; aggregate to the dominant country for the entry header.
+  4b. **mode_of_transport** — Box 24 ("Mode of Transportation Code"). Common ABI codes: 10/11 = Vessel (ocean), 40/41 = Air, 30/31 = Truck (ground), 60 = Mail. Map to one of: ocean, air, ground, other. Null if Box 24 is not on the form. Drives whether HMF applies (HMF is ocean-only).
   5. **importer** — Box 19 ("Importer of Record") name as printed.
   6. **line_items** — One per row in Box 28 / 29 / 30 / 33 / 35 etc. For each:
 

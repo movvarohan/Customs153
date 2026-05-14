@@ -53,6 +53,11 @@ const TOOL_INPUT_SCHEMA = {
     invoice_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
     consignee: { type: ["string", "null"] },
     country_of_origin: { type: ["string", "null"] },
+    mode_of_transport: {
+      type: ["string", "null"],
+      enum: ["ocean", "air", "ground", "other", null],
+      description: "Mode of transport — ocean / air / ground / other. Drives whether HMF applies. Null if not on the document.",
+    },
     currency: { type: "string", pattern: "^[A-Z]{3}$" },
     total_value: {
       type: "integer",

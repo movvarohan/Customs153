@@ -38,6 +38,12 @@ export const ExtractedShipment = z.object({
   invoice_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   consignee: z.string().nullable(),
   country_of_origin: z.string().nullable(),
+  /**
+   * Mode of transport from the invoice / bill of lading. Drives Harbor
+   * Maintenance Fee — HMF is ocean-only. Optional. When absent the duty
+   * calculator assumes "ocean" and surfaces the assumption in warnings.
+   */
+  mode_of_transport: z.enum(["ocean", "air", "ground", "other"]).nullable().optional(),
   /** ISO 4217 currency code as printed on the invoice. */
   currency: z.string().regex(/^[A-Z]{3}$/),
   /** Sum of line items in invoice currency (integer cents). */

@@ -1,12 +1,13 @@
 {
   "importer": "Atlas Retail Holdings LLC (Amazon FBA seller)",
-  "generated_at": "2026-05-13T06:44:54.571Z",
+  "generated_at": "2026-05-14T10:59:00.780Z",
   "entries": [
     {
       "entry_number": "CN-AMA-1338480-01",
       "entry_date": "2025-09-30",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "USB-C cable 1m fast charging data sync",
@@ -14,7 +15,7 @@
           "unit_value_usd_cents": 313,
           "total_value_usd_cents": 961536,
           "hts_code_as_filed": "8544.42.90.90",
-          "duty_paid_usd_cents": 269917,
+          "duty_paid_usd_cents": 265384,
           "_ground_truth_correct_hts": "8544.42.90.90"
         }
       ]
@@ -24,6 +25,7 @@
       "entry_date": "2025-09-07",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "BT 5.3 ANC headphones foldable with carrying case",
@@ -31,7 +33,7 @@
           "unit_value_usd_cents": 1927,
           "total_value_usd_cents": 1711176,
           "hts_code_as_filed": "8518.30.20.00",
-          "duty_paid_usd_cents": 519709,
+          "duty_paid_usd_cents": 511642,
           "_ground_truth_correct_hts": "8518.30.20.00"
         }
       ]
@@ -41,6 +43,7 @@
       "entry_date": "2026-05-11",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "20W USB-C PD fast wall charger compact dual-port",
@@ -48,7 +51,7 @@
           "unit_value_usd_cents": 650,
           "total_value_usd_cents": 232700,
           "hts_code_as_filed": "8507.60.00.20",
-          "duty_paid_usd_cents": 69649,
+          "duty_paid_usd_cents": 66087,
           "_ground_truth_correct_hts": "8504.40.95.40"
         }
       ]
@@ -58,6 +61,7 @@
       "entry_date": "2026-03-05",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Glazed earthenware ceramic mug with handle, retail 11oz",
@@ -65,7 +69,7 @@
           "unit_value_usd_cents": 816,
           "total_value_usd_cents": 2135472,
           "hts_code_as_filed": "6912.00.44.00",
-          "duty_paid_usd_cents": 753210,
+          "duty_paid_usd_cents": 743144,
           "_ground_truth_correct_hts": "6912.00.44.00"
         }
       ]
@@ -75,6 +79,7 @@
       "entry_date": "2025-07-09",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Bamboo end-grain cutting board 18x12 inch food-safe finish",
@@ -82,7 +87,7 @@
           "unit_value_usd_cents": 1663,
           "total_value_usd_cents": 1215653,
           "hts_code_as_filed": "4419.11.00.00",
-          "duty_paid_usd_cents": 309644,
+          "duty_paid_usd_cents": 303913,
           "_ground_truth_correct_hts": "4419.11.00.00"
         }
       ]
@@ -92,6 +97,7 @@
       "entry_date": "2025-09-19",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "USB-C cable 1m fast charging data sync",
@@ -99,7 +105,7 @@
           "unit_value_usd_cents": 293,
           "total_value_usd_cents": 226489,
           "hts_code_as_filed": "8544.42.90.90",
-          "duty_paid_usd_cents": 66065,
+          "duty_paid_usd_cents": 62511,
           "_ground_truth_correct_hts": "8544.42.90.90"
         }
       ]
@@ -109,6 +115,7 @@
       "entry_date": "2026-02-04",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Smart fitness watch with heart rate monitor, GPS, color touchscreen, BT 5.0",
@@ -116,7 +123,7 @@
           "unit_value_usd_cents": 3633,
           "total_value_usd_cents": 940947,
           "hts_code_as_filed": "8517.62.00.90",
-          "duty_paid_usd_cents": 239684,
+          "duty_paid_usd_cents": 235237,
           "_ground_truth_correct_hts": "8517.62.00.90"
         }
       ]
@@ -126,6 +133,7 @@
       "entry_date": "2025-06-30",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Smartwatch with phone notifications, blood oxygen sensor, 1.4 inch AMOLED",
@@ -133,7 +141,7 @@
           "unit_value_usd_cents": 2533,
           "total_value_usd_cents": 1170246,
           "hts_code_as_filed": "8517.62.00.90",
-          "duty_paid_usd_cents": 298079,
+          "duty_paid_usd_cents": 292562,
           "_ground_truth_correct_hts": "8517.62.00.90"
         }
       ]
@@ -143,6 +151,7 @@
       "entry_date": "2025-07-19",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "20W USB-C PD fast wall charger compact dual-port",
@@ -150,7 +159,7 @@
           "unit_value_usd_cents": 1117,
           "total_value_usd_cents": 319462,
           "hts_code_as_filed": "8507.60.00.20",
-          "duty_paid_usd_cents": 94398,
+          "duty_paid_usd_cents": 90728,
           "_ground_truth_correct_hts": "8504.40.95.40"
         },
         {
@@ -159,7 +168,7 @@
           "unit_value_usd_cents": 1818,
           "total_value_usd_cents": 1383498,
           "hts_code_as_filed": "8518.30.20.00",
-          "duty_paid_usd_cents": 420187,
+          "duty_paid_usd_cents": 413666,
           "_ground_truth_correct_hts": "8518.30.20.00"
         }
       ]
@@ -169,6 +178,7 @@
       "entry_date": "2025-09-26",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "USB-C cable 1m fast charging data sync",
@@ -176,7 +186,7 @@
           "unit_value_usd_cents": 754,
           "total_value_usd_cents": 2292160,
           "hts_code_as_filed": "8544.42.90.90",
-          "duty_paid_usd_cents": 643441,
+          "duty_paid_usd_cents": 632636,
           "_ground_truth_correct_hts": "8544.42.90.90"
         }
       ]
@@ -186,6 +196,7 @@
       "entry_date": "2026-02-20",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "30W USB-C wall charger universal voltage with foldable prongs",
@@ -193,7 +204,7 @@
           "unit_value_usd_cents": 1113,
           "total_value_usd_cents": 1509228,
           "hts_code_as_filed": "8504.40.95.40",
-          "duty_paid_usd_cents": 384422,
+          "duty_paid_usd_cents": 377307,
           "_ground_truth_correct_hts": "8504.40.95.40"
         }
       ]
@@ -203,6 +214,7 @@
       "entry_date": "2026-03-03",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "USB-C cable 2m heavy-duty 240W EPR rated",
@@ -210,7 +222,7 @@
           "unit_value_usd_cents": 122,
           "total_value_usd_cents": 443836,
           "hts_code_as_filed": "8544.42.90.90",
-          "duty_paid_usd_cents": 126325,
+          "duty_paid_usd_cents": 122499,
           "_ground_truth_correct_hts": "8544.42.90.90"
         }
       ]
@@ -220,6 +232,7 @@
       "entry_date": "2025-07-31",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "20W USB-C PD fast wall charger compact dual-port",
@@ -227,7 +240,7 @@
           "unit_value_usd_cents": 1269,
           "total_value_usd_cents": 1714419,
           "hts_code_as_filed": "8507.60.00.20",
-          "duty_paid_usd_cents": 494977,
+          "duty_paid_usd_cents": 486895,
           "_ground_truth_correct_hts": "8504.40.95.40"
         }
       ]
@@ -237,6 +250,7 @@
       "entry_date": "2025-07-12",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Bluetooth earbuds true wireless with charging case",
@@ -244,7 +258,7 @@
           "unit_value_usd_cents": 1779,
           "total_value_usd_cents": 1005135,
           "hts_code_as_filed": "8518.30.20.00",
-          "duty_paid_usd_cents": 305274,
+          "duty_paid_usd_cents": 300536,
           "_ground_truth_correct_hts": "8518.30.20.00"
         }
       ]
@@ -254,6 +268,7 @@
       "entry_date": "2025-07-16",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Wireless USB mouse 2.4GHz with ergonomic design and AAA battery",
@@ -261,7 +276,7 @@
           "unit_value_usd_cents": 1041,
           "total_value_usd_cents": 1032672,
           "hts_code_as_filed": "9017.20.80.40",
-          "duty_paid_usd_cents": 52371,
+          "duty_paid_usd_cents": 47503,
           "_ground_truth_correct_hts": "8471.60.20.00"
         },
         {
@@ -270,7 +285,7 @@
           "unit_value_usd_cents": 613,
           "total_value_usd_cents": 443812,
           "hts_code_as_filed": "6911.10.45.00",
-          "duty_paid_usd_cents": 126939,
+          "duty_paid_usd_cents": 123113,
           "_ground_truth_correct_hts": "6912.00.44.00"
         }
       ]
@@ -280,6 +295,7 @@
       "entry_date": "2025-09-21",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "LED desk lamp dimmable touch control USB-powered",
@@ -287,7 +303,7 @@
           "unit_value_usd_cents": 966,
           "total_value_usd_cents": 508116,
           "hts_code_as_filed": "9405.21.60.10",
-          "duty_paid_usd_cents": 150752,
+          "duty_paid_usd_cents": 146846,
           "_ground_truth_correct_hts": "9405.21.60.10"
         }
       ]
@@ -297,6 +313,7 @@
       "entry_date": "2025-11-10",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "LED desk lamp dimmable touch control USB-powered",
@@ -304,7 +321,7 @@
           "unit_value_usd_cents": 910,
           "total_value_usd_cents": 225680,
           "hts_code_as_filed": "9405.21.60.10",
-          "duty_paid_usd_cents": 68775,
+          "duty_paid_usd_cents": 65222,
           "_ground_truth_correct_hts": "9405.21.60.10"
         }
       ]
@@ -314,6 +331,7 @@
       "entry_date": "2025-09-10",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Smart fitness watch with heart rate monitor, GPS, color touchscreen, BT 5.0",
@@ -321,7 +339,7 @@
           "unit_value_usd_cents": 3891,
           "total_value_usd_cents": 2859885,
           "hts_code_as_filed": "8517.62.00.90",
-          "duty_paid_usd_cents": 728453,
+          "duty_paid_usd_cents": 714971,
           "_ground_truth_correct_hts": "8517.62.00.90"
         }
       ]
@@ -331,6 +349,7 @@
       "entry_date": "2026-04-27",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Earthenware mug stoneware-style 16oz matte glaze",
@@ -338,7 +357,7 @@
           "unit_value_usd_cents": 322,
           "total_value_usd_cents": 1022672,
           "hts_code_as_filed": "6912.00.44.00",
-          "duty_paid_usd_cents": 360711,
+          "duty_paid_usd_cents": 355890,
           "_ground_truth_correct_hts": "6912.00.44.00"
         }
       ]
@@ -348,6 +367,7 @@
       "entry_date": "2025-08-08",
       "port_of_entry": "Long Beach, CA",
       "country_of_origin": "CN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Smartwatch waterproof IP68 with sleep tracking, Wi-Fi sync",
@@ -355,7 +375,7 @@
           "unit_value_usd_cents": 3678,
           "total_value_usd_cents": 1246842,
           "hts_code_as_filed": "8517.62.00.90",
-          "duty_paid_usd_cents": 317589,
+          "duty_paid_usd_cents": 311711,
           "_ground_truth_correct_hts": "8517.62.00.90"
         }
       ]

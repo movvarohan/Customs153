@@ -19,7 +19,8 @@ import { z } from "zod";
 import type { HonoEnv } from "./types";
 import { extract } from "@/core/agents/extractor";
 import { classify } from "@/core/agents/classifier";
-import { calculateDuty } from "@/core/agents/duty-calculator";
+import { calculateDuty, calculateEntryFees } from "@/core/agents/duty-calculator";
+import { loadTariffRates } from "@/core/lib/tariff-rates";
 import { parseEntrySummary } from "@/core/agents/entry-summary-parser";
 import { findRefundOpportunities } from "@/core/agents/psc-finder";
 import { renderRefundReportToBuffer } from "@/core/lib/render-refund-pdf";
@@ -232,11 +233,15 @@ apiRoute.post("/process-invoice", async (c) => {
               dutyError = `cannot compute duty: no FX rate available for ${extraction.currency}`;
             } else {
               try {
+                // Per-line: duty rates only. Entry-level fees (MPF / HMF)
+                // are added once at the bottom on the aggregate value so the
+                // MPF min cap and HMF aren't applied N times.
                 duty = await calculateDuty(ctx, {
                   hts_code: classification.hts_code_8,
                   country_of_origin: toIsoAlpha2(t.country_of_origin),
                   customs_value_usd_cents: lineUsdCents,
-                  transport_mode: "ocean",
+                  transport_mode: extraction.mode_of_transport ?? "ocean",
+                  include_entry_fees: false,
                 });
                 await emit({
                   type: "line_duty_calculated",
@@ -282,24 +287,46 @@ apiRoute.post("/process-invoice", async (c) => {
           };
         });
         const classifiedOk = finalLines.filter((l) => l.classification !== null).length;
-        const totalDutyUsdCents = finalLines.reduce(
+        const totalLineDutyUsdCents = finalLines.reduce(
           (a, l) => a + (l.duty?.total_duty_usd_cents ?? 0),
           0,
         );
+
+        // Entry-level fees: MPF + HMF computed once on the aggregate USD
+        // customs value (not per-line). This is how CBP actually assesses
+        // them — see 19 USC 58c(b)(8) and CBP Form 7501 Box 39 ABI codes.
+        const table = await loadTariffRates(ctx);
+        const transportModeAssumed = !extraction.mode_of_transport;
+        const entryFees =
+          extraction.total_value_usd_cents !== null
+            ? calculateEntryFees(
+                table,
+                extraction.total_value_usd_cents,
+                extraction.mode_of_transport ?? "ocean",
+                { transport_mode_assumed: transportModeAssumed },
+              )
+            : null;
+
+        const totalDutyUsdCents = totalLineDutyUsdCents + (entryFees?.total_usd_cents ?? 0);
 
         await emit({
           type: "done",
           extraction,
           source_filenames: filenames,
           lines: finalLines,
+          entry_fees: entryFees,
           summary: {
             total_documents: filenames.length,
             total_lines: finalLines.length,
             classified_ok: classifiedOk,
             failed: finalLines.length - classifiedOk,
+            total_line_duty_usd_cents: totalLineDutyUsdCents,
+            entry_fees_usd_cents: entryFees?.total_usd_cents ?? 0,
             total_duty_usd_cents: totalDutyUsdCents,
             currency: extraction.currency,
             customs_value_usd_cents: extraction.total_value_usd_cents,
+            transport_mode: extraction.mode_of_transport ?? "ocean",
+            transport_mode_assumed: transportModeAssumed,
           },
         });
       } catch (err) {

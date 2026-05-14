@@ -104,6 +104,7 @@ interface LineTask {
   total_value_usd_cents: number;
   duty_paid_usd_cents: number;
   hts_code_as_filed: string;
+  mode_of_transport?: "ocean" | "air" | "ground" | "other";
   psc_eligible: boolean;
 }
 
@@ -144,6 +145,7 @@ export async function findRefundOpportunities(
         total_value_usd_cents: line.total_value_usd_cents,
         duty_paid_usd_cents: line.duty_paid_usd_cents,
         hts_code_as_filed: line.hts_code_as_filed,
+        ...(entry.mode_of_transport ? { mode_of_transport: entry.mode_of_transport } : {}),
         psc_eligible: pscEligible,
       });
     });
@@ -190,11 +192,17 @@ export async function findRefundOpportunities(
       const predicted8 = predicted.hts_code_8;
       const isAgreement = stripDots(filed8) === stripDots(predicted8);
 
+      // For PSC analysis we compare duty rates only — MPF and HMF are
+      // entry-level value-based fees that are identical whether the line
+      // is classified as filed or as predicted. They cancel mathematically
+      // in (filed - predicted), so excluding them from BOTH sides keeps the
+      // recoverable_amount equal to the duty-rate delta only.
       const dutyPredictedCalc = await calculateDuty(ctx, {
         hts_code: predicted.hts_code,
         country_of_origin: t.country_of_origin,
         customs_value_usd_cents: t.total_value_usd_cents,
-        transport_mode: "ocean",
+        transport_mode: t.mode_of_transport ?? "ocean",
+        include_entry_fees: false,
       });
       const dutyPredictedCents = dutyPredictedCalc.total_duty_usd_cents;
       const recoverable = t.duty_paid_usd_cents - dutyPredictedCents;

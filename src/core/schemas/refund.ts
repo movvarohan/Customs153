@@ -36,6 +36,12 @@ export const HistoricalEntry = z.object({
   port_of_entry: z.string().min(1),
   /** ISO 3166-1 alpha-2. */
   country_of_origin: z.string().regex(/^[A-Z]{2}$/),
+  /**
+   * Mode of transport — drives Harbor Maintenance Fee (HMF is ocean-only).
+   * Optional. When absent the PSC finder assumes "ocean" and surfaces the
+   * assumption in the report so the broker sees it.
+   */
+  mode_of_transport: z.enum(["ocean", "air", "ground", "other"]).nullable().optional(),
   line_items: z.array(HistoricalLineItem).min(1),
 });
 export type HistoricalEntryT = z.infer<typeof HistoricalEntry>;

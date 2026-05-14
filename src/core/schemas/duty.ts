@@ -44,8 +44,8 @@ export const DutyCalculationInput = z.object({
   customs_value_usd_cents: z.number().int().nonnegative(),
   quantity: z.number().positive().optional(),
   unit_of_measure: z.string().optional(),
-  /** "ocean" by default; "air" / "ground" skip the HMF. */
-  transport_mode: z.enum(["ocean", "air", "ground", "unknown"]).default("ocean"),
+  /** "ocean" by default; "air" / "ground" / "other" skip the HMF (ocean-only fee). */
+  transport_mode: z.enum(["ocean", "air", "ground", "other"]).default("ocean"),
 });
 export type DutyCalculationInputT = z.infer<typeof DutyCalculationInput>;
 

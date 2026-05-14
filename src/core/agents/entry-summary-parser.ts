@@ -28,6 +28,11 @@ const TOOL_INPUT_SCHEMA = {
     entry_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
     port_of_entry: { type: "string" },
     country_of_origin: { type: "string", pattern: "^[A-Z]{2}$" },
+    mode_of_transport: {
+      type: ["string", "null"],
+      enum: ["ocean", "air", "ground", "other", null],
+      description: "Mode of transport from Box 24 ('Mode of Transportation Code') on Form 7501. Common codes: 10/11 = Vessel/ocean, 40/41 = Air, 30/31 = Truck/ground, 60 = Mail. Map to one of: ocean, air, ground, other. Null if not on the form.",
+    },
     importer: { type: "string" },
     line_items: {
       type: "array",

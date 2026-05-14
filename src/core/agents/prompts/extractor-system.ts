@@ -21,6 +21,7 @@ Cross-reference line items across documents by **description, model number, and 
   4. **Invoice date.** ISO 8601 (YYYY-MM-DD). If the document shows a localized format, convert it. If the year is two digits, assume 20YY.
   5. **Consignee.** The buyer / importer. Null if not on the document.
   6. **Country of origin.** ISO country name or as printed. May appear once for the whole shipment or per line item.
+  6b. **Mode of transport.** One of: ocean, air, ground, other. Read from a Bill of Lading / Air Waybill / shipping label if present; null if not on any attached document. Drives whether Harbor Maintenance Fee applies (HMF is ocean-only).
   7. **Currency.** ISO 4217 3-letter code (USD, EUR, CNY, INR, etc.). Read from the price column header, the totals, or explicit currency text.
   8. **Total value.** The grand total in invoice currency, in **integer cents**.
   9. **Line items.** Every itemized row in the goods description table. For each: see below.

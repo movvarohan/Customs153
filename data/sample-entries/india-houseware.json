@@ -1,12 +1,13 @@
 {
   "importer": "Saraswati Houseware Trading Co.",
-  "generated_at": "2026-05-13T06:44:54.573Z",
+  "generated_at": "2026-05-14T10:59:00.784Z",
   "entries": [
     {
       "entry_number": "IN-IND-1002253-01",
       "entry_date": "2025-08-19",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Cotton dhurrie rug hand-woven flat-weave 3x5 ft",
@@ -14,7 +15,7 @@
           "unit_value_usd_cents": 4816,
           "total_value_usd_cents": 963200,
           "hts_code_as_filed": "5703.30.20.00",
-          "duty_paid_usd_cents": 30933,
+          "duty_paid_usd_cents": 26392,
           "_ground_truth_correct_hts": "5702.10.90.00"
         }
       ]
@@ -24,6 +25,7 @@
       "entry_date": "2025-08-08",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Clear glass tea-light holder cut and pressed 3 inch",
@@ -31,7 +33,7 @@
           "unit_value_usd_cents": 743,
           "total_value_usd_cents": 611489,
           "hts_code_as_filed": "7013.99.35.00",
-          "duty_paid_usd_cents": 48062,
+          "duty_paid_usd_cents": 44027,
           "_ground_truth_correct_hts": "7013.99.35.00"
         }
       ]
@@ -41,6 +43,7 @@
       "entry_date": "2025-06-08",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Cotton dhurrie rug hand-woven flat-weave 3x5 ft",
@@ -48,7 +51,7 @@
           "unit_value_usd_cents": 7689,
           "total_value_usd_cents": 776589,
           "hts_code_as_filed": "5702.10.90.00",
-          "duty_paid_usd_cents": 4242,
+          "duty_paid_usd_cents": 0,
           "_ground_truth_correct_hts": "5702.10.90.00"
         }
       ]
@@ -58,6 +61,7 @@
       "entry_date": "2025-09-13",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Brass candle stand hand-tooled 6-arm centerpiece",
@@ -65,7 +69,7 @@
           "unit_value_usd_cents": 2011,
           "total_value_usd_cents": 432365,
           "hts_code_as_filed": "9405.50.30.00",
-          "duty_paid_usd_cents": 32779,
+          "duty_paid_usd_cents": 28968,
           "_ground_truth_correct_hts": "9405.50.30.00"
         }
       ]
@@ -75,6 +79,7 @@
       "entry_date": "2026-04-29",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Glazed ceramic mug stoneware-body cobalt blue 16oz",
@@ -82,7 +87,7 @@
           "unit_value_usd_cents": 244,
           "total_value_usd_cents": 176412,
           "hts_code_as_filed": "6911.10.45.00",
-          "duty_paid_usd_cents": 8326,
+          "duty_paid_usd_cents": 4834,
           "_ground_truth_correct_hts": "6912.00.44.00"
         }
       ]
@@ -92,6 +97,7 @@
       "entry_date": "2026-04-30",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Sheesham wood cutting board 14x10 inch with juice groove",
@@ -99,7 +105,7 @@
           "unit_value_usd_cents": 2842,
           "total_value_usd_cents": 395038,
           "hts_code_as_filed": "4419.19.10.00",
-          "duty_paid_usd_cents": 16406,
+          "duty_paid_usd_cents": 12641,
           "_ground_truth_correct_hts": "4419.19.10.00"
         }
       ]
@@ -109,6 +115,7 @@
       "entry_date": "2025-07-14",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Glazed ceramic mug stoneware-body cobalt blue 16oz",
@@ -116,7 +123,7 @@
           "unit_value_usd_cents": 203,
           "total_value_usd_cents": 85057,
           "hts_code_as_filed": "6912.00.44.00",
-          "duty_paid_usd_cents": 11713,
+          "duty_paid_usd_cents": 8336,
           "_ground_truth_correct_hts": "6912.00.44.00"
         },
         {
@@ -125,7 +132,7 @@
           "unit_value_usd_cents": 188,
           "total_value_usd_cents": 57716,
           "hts_code_as_filed": "6912.00.44.00",
-          "duty_paid_usd_cents": 8999,
+          "duty_paid_usd_cents": 5656,
           "_ground_truth_correct_hts": "6912.00.44.00"
         }
       ]
@@ -135,6 +142,7 @@
       "entry_date": "2025-09-22",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Indian rosewood serving board with brass inlay",
@@ -142,7 +150,7 @@
           "unit_value_usd_cents": 4336,
           "total_value_usd_cents": 346880,
           "hts_code_as_filed": "4419.19.10.00",
-          "duty_paid_usd_cents": 14805,
+          "duty_paid_usd_cents": 11100,
           "_ground_truth_correct_hts": "4419.19.10.00"
         }
       ]
@@ -152,6 +160,7 @@
       "entry_date": "2025-06-24",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Embossed glass votive candle holder decorative 4 inch",
@@ -159,7 +168,7 @@
           "unit_value_usd_cents": 540,
           "total_value_usd_cents": 617220,
           "hts_code_as_filed": "7013.99.35.00",
-          "duty_paid_usd_cents": 48483,
+          "duty_paid_usd_cents": 44440,
           "_ground_truth_correct_hts": "7013.99.35.00"
         }
       ]
@@ -169,6 +178,7 @@
       "entry_date": "2025-11-18",
       "port_of_entry": "New York/Newark",
       "country_of_origin": "IN",
+      "mode_of_transport": "ocean",
       "line_items": [
         {
           "description": "Sheesham wood cutting board 14x10 inch with juice groove",
@@ -176,7 +186,7 @@
           "unit_value_usd_cents": 5407,
           "total_value_usd_cents": 675875,
           "hts_code_as_filed": "4419.19.10.00",
-          "duty_paid_usd_cents": 25744,
+          "duty_paid_usd_cents": 21628,
           "_ground_truth_correct_hts": "4419.19.10.00"
         }
       ]
