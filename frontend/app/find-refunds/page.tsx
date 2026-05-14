@@ -137,29 +137,61 @@ export default function FindRefundsPage() {
     setParseWarnings([]);
     const t0 = Date.now();
     try {
-      // Parse + merge all JSON files client-side.
-      const parsed: HistoricalEntriesLike[] = [];
-      for (const f of files) {
-        try {
-          const text = await f.text();
-          const obj = JSON.parse(text) as HistoricalEntriesLike;
-          if (!obj || !Array.isArray(obj.entries)) {
-            setError(`${f.name}: missing "entries" array — not a valid HistoricalEntries export.`);
+      // Split files by extension. JSON is parsed + merged client-side and
+      // POSTed as JSON; PDFs are sent as multipart for the backend's entry-
+      // summary parser to convert into HistoricalEntry records.
+      const jsonFiles = files.filter((f) => f.name.toLowerCase().endsWith(".json"));
+      const pdfFiles = files.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+      const otherFiles = files.filter(
+        (f) => !f.name.toLowerCase().endsWith(".json") && !f.name.toLowerCase().endsWith(".pdf"),
+      );
+      if (otherFiles.length > 0) {
+        setError(
+          `Unsupported file type${otherFiles.length === 1 ? "" : "s"}: ${otherFiles
+            .map((f) => f.name)
+            .join(", ")}. Use JSON entry exports or CBP Form 7501 PDFs.`,
+        );
+        return;
+      }
+      if (jsonFiles.length > 0 && pdfFiles.length > 0) {
+        setError(
+          "Mixed inputs: upload JSON OR PDF entry summaries, not both in one analysis. Run them separately.",
+        );
+        return;
+      }
+
+      let res: Response;
+      if (pdfFiles.length > 0) {
+        // PDF path: multipart upload, backend parses each PDF into an entry.
+        setStatusMessage(`Parsing ${pdfFiles.length} entry-summary PDF${pdfFiles.length === 1 ? "" : "s"}…`);
+        const fd = new FormData();
+        for (const f of pdfFiles) fd.append("file", f);
+        res = await fetch(`${API_BASE_URL}/api/find-refunds`, { method: "POST", body: fd });
+      } else {
+        // JSON path: parse + merge client-side and POST a single body.
+        const parsed: HistoricalEntriesLike[] = [];
+        for (const f of jsonFiles) {
+          try {
+            const text = await f.text();
+            const obj = JSON.parse(text) as HistoricalEntriesLike;
+            if (!obj || !Array.isArray(obj.entries)) {
+              setError(`${f.name}: missing "entries" array — not a valid HistoricalEntries export.`);
+              return;
+            }
+            parsed.push(obj);
+          } catch (e) {
+            setError(`${f.name}: invalid JSON (${e instanceof Error ? e.message : String(e)})`);
             return;
           }
-          parsed.push(obj);
-        } catch (e) {
-          setError(`${f.name}: invalid JSON (${e instanceof Error ? e.message : String(e)})`);
-          return;
         }
+        const { body, warnings } = mergeHistoricalEntries(parsed);
+        setParseWarnings(warnings);
+        res = await fetch(`${API_BASE_URL}/api/find-refunds`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
       }
-      const { body, warnings } = mergeHistoricalEntries(parsed);
-      setParseWarnings(warnings);
-      const res = await fetch(`${API_BASE_URL}/api/find-refunds`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
       if (!res.ok) {
         setError(`backend returned ${res.status}: ${await res.text()}`);
         return;
@@ -172,6 +204,12 @@ export default function FindRefundsPage() {
           if (typeof evt.total_lines === "number") {
             setCounters((c) => ({ ...c, total_lines: evt.total_lines as number }));
           }
+        } else if (evt.type === "entries_parsed_from_pdf") {
+          const parsedEntries = (evt.entries as Array<{ entry_number: string; line_count: number }>) ?? [];
+          const totalParsed = parsedEntries.reduce((a, e) => a + e.line_count, 0);
+          setStatusMessage(
+            `Parsed ${parsedEntries.length} entr${parsedEntries.length === 1 ? "y" : "ies"} from PDF (${totalParsed} line items). Beginning analysis…`,
+          );
         } else if (evt.type === "line_analyzed") {
           const outcome = (evt.outcome as { kind: string; recoverable_usd_cents?: number }) ?? { kind: "agreement" };
           setCounters((c) => {
@@ -247,7 +285,7 @@ export default function FindRefundsPage() {
           >
             <input
               type="file"
-              accept=".json"
+              accept=".json,.pdf"
               multiple
               className="sr-only"
               onChange={(e) => {
@@ -264,13 +302,14 @@ export default function FindRefundsPage() {
             </div>
             <div className="text-sm font-semibold text-navy">Upload your historical entries</div>
             <div className="mt-1 max-w-md text-xs leading-relaxed text-muted">
-              JSON exported from your broker's filing system, or from the CBP ACE Importer Portal — typically
-              6–24 months of entries with the line items, filed HTS codes, and duty amounts. Each line is
-              re-classified from scratch and any duty overpayment is surfaced here.
+              CBP Form 7501 entry-summary <strong className="text-navy">PDFs</strong>, or a JSON export from your
+              broker's filing system / the CBP ACE Importer Portal. Either way we re-classify every line from
+              scratch and surface duty overpayments. Multiple files are combined.
             </div>
             <div className="mt-3 text-[11px] text-muted">
-              Upload multiple JSON files to combine periods. Need a sample? See{" "}
-              <code className="rounded bg-navy-50 px-1 text-[11px]">data/sample-entries/</code> in the repo.
+              PDF: one CBP Form 7501 per file (continuation sheets included).{" "}
+              JSON: see <code className="rounded bg-navy-50 px-1 text-[11px]">data/sample-entries/</code> for the
+              expected shape.
             </div>
           </label>
 
@@ -285,7 +324,7 @@ export default function FindRefundsPage() {
                   + add more
                   <input
                     type="file"
-                    accept=".json"
+                    accept=".json,.pdf"
                     multiple
                     className="sr-only"
                     onChange={(e) => {

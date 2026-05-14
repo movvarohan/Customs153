@@ -20,6 +20,7 @@ import type { HonoEnv } from "./types";
 import { extract } from "@/core/agents/extractor";
 import { classify } from "@/core/agents/classifier";
 import { calculateDuty } from "@/core/agents/duty-calculator";
+import { parseEntrySummary } from "@/core/agents/entry-summary-parser";
 import { findRefundOpportunities } from "@/core/agents/psc-finder";
 import { renderRefundReportToBuffer } from "@/core/lib/render-refund-pdf";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
@@ -316,25 +317,100 @@ apiRoute.post("/process-invoice", async (c) => {
 });
 
 // ── POST /api/find-refunds ────────────────────────────────────────────────
-// Accepts a HistoricalEntries JSON body. Streams NDJSON events:
-// status, line_classified, line_failed, done, error.
-const FindRefundsBody = HistoricalEntries;
+// Two input shapes are accepted:
+//
+//   (a) Content-Type: application/json
+//       Body is a HistoricalEntries object (the format the PSC finder consumes
+//       directly). Used by JSON exports from broker systems / ACE.
+//
+//   (b) Content-Type: multipart/form-data
+//       One or more "file" fields, each a CBP Form 7501 entry-summary PDF.
+//       Each PDF is parsed by the entry-summary agent into one HistoricalEntry;
+//       all entries are wrapped into a single HistoricalEntries body and run
+//       through the PSC finder.
+//
+// Streams NDJSON events: status, entry_parsed (multipart only),
+// line_analyzed, done, error.
+const FindRefundsJsonBody = HistoricalEntries;
 
 apiRoute.post("/find-refunds", async (c) => {
   const ctx = c.var.ctx;
   await seedDemoFxRates(ctx);
 
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "request body must be valid JSON" }, 400);
+  const contentType = c.req.header("content-type") ?? "";
+  const isMultipart = contentType.includes("multipart/form-data");
+
+  let historical: import("@/core/schemas/refund").HistoricalEntriesT;
+  const tmpPaths: string[] = [];
+  let parsedFromPdfFilenames: string[] = [];
+
+  if (isMultipart) {
+    // Parse PDFs into HistoricalEntries.
+    try {
+      const formData = await c.req.formData();
+      type FileLike = { name: string; size: number; arrayBuffer(): Promise<ArrayBuffer> };
+      const files: FileLike[] = formData.getAll("file").flatMap((v) => {
+        if (typeof v === "object" && v !== null && "name" in v && "arrayBuffer" in v) {
+          return [v as unknown as FileLike];
+        }
+        return [];
+      });
+      if (files.length === 0) {
+        return c.json({ error: "missing 'file' form field" }, 400);
+      }
+      // Save all files to tmp first so we can stream parse events back.
+      const uploads: Array<{ file: FileLike; tmpPath: string }> = [];
+      for (const file of files) {
+        const ext = path.extname(file.name).toLowerCase() || ".pdf";
+        if (ext !== ".pdf") {
+          return c.json(
+            { error: `${file.name}: only PDF files are supported for entry summaries (got ${ext})` },
+            400,
+          );
+        }
+        const tmpPath = path.join(os.tmpdir(), `customs-entry-${randomUUID()}${ext}`);
+        const bytes = Buffer.from(await file.arrayBuffer());
+        await fs.writeFile(tmpPath, bytes);
+        tmpPaths.push(tmpPath);
+        uploads.push({ file, tmpPath });
+      }
+
+      // Parse each PDF in parallel into a HistoricalEntry. Importer name from
+      // the first successful parse wins.
+      const parsed = await Promise.all(
+        uploads.map(async (u) => {
+          const { result } = await parseEntrySummary(ctx, u.tmpPath);
+          return { filename: u.file.name, entry: result.entry, importer: result.importer };
+        }),
+      );
+      const importer = parsed[0]?.importer ?? "Unknown importer";
+      historical = {
+        importer,
+        generated_at: new Date().toISOString(),
+        entries: parsed.map((p) => p.entry),
+      };
+      parsedFromPdfFilenames = parsed.map((p) => p.filename);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await Promise.all(tmpPaths.map((p) => fs.rm(p, { force: true })));
+      return c.json({ error: `entry-summary parsing failed: ${msg}` }, 400);
+    } finally {
+      await Promise.all(tmpPaths.map((p) => fs.rm(p, { force: true })));
+    }
+  } else {
+    // JSON body path.
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "request body must be valid JSON" }, 400);
+    }
+    const result = FindRefundsJsonBody.safeParse(body);
+    if (!result.success) {
+      return c.json({ error: `invalid HistoricalEntries: ${result.error.message}` }, 400);
+    }
+    historical = result.data;
   }
-  const parsed = FindRefundsBody.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: `invalid HistoricalEntries: ${parsed.error.message}` }, 400);
-  }
-  const historical = parsed.data;
   // Defense in depth — strip _ground_truth_correct_hts from the agent input.
   const safeHistorical = {
     ...historical,
@@ -354,6 +430,19 @@ apiRoute.post("/find-refunds", async (c) => {
     };
 
     try {
+      if (parsedFromPdfFilenames.length > 0) {
+        await emit({
+          type: "entries_parsed_from_pdf",
+          source_filenames: parsedFromPdfFilenames,
+          entries: historical.entries.map((e) => ({
+            entry_number: e.entry_number,
+            entry_date: e.entry_date,
+            port_of_entry: e.port_of_entry,
+            country_of_origin: e.country_of_origin,
+            line_count: e.line_items.length,
+          })),
+        });
+      }
       const totalLines = historical.entries.reduce((a, e) => a + e.line_items.length, 0);
       await emit({
         type: "status",
