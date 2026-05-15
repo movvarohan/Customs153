@@ -24,6 +24,7 @@ import {
   CLASSIFIER_PROMPT_VERSION,
   CLASSIFIER_SYSTEM_PROMPT,
 } from "./prompts/classifier-system";
+import { verifyClassification } from "./verifier";
 
 const TOP_K = 50;
 const MAX_OUTPUT_TOKENS = 2048;
@@ -138,6 +139,24 @@ export interface ClassifyTrace {
   }>;
   /** Non-null when the predicted hts_code's heading isn't referenced in reasoning text. */
   reasoning_consistency_warning: string | null;
+  /** Set when the verifier ran (ENABLE_VERIFIER=1) regardless of outcome. */
+  verifier?: {
+    ran: boolean;
+    agreed: boolean;
+    original_hts_code: string;
+    original_hts_code_8: string;
+    original_confidence: "low" | "medium" | "high";
+    revised_hts_code: string | null;
+    revised_hts_code_8: string | null;
+    revised_reasoning: string | null;
+    verifier_reasoning: string;
+    criteria_check: Array<{
+      criterion: string;
+      evidence_in_description: string;
+      satisfied: boolean;
+    }>;
+    latency_ms: number;
+  };
   result: ClassificationResultT;
 }
 
@@ -295,6 +314,7 @@ export async function classify(
     );
   }
 
+  // Result will be finalized after the optional verifier post-step below.
   trace.result = validatedResult;
 
   // ── 4. Heuristic reasoning-vs-prediction consistency check ─────────────
@@ -304,7 +324,80 @@ export async function classify(
   const warning = checkReasoningConsistency(validatedResult.reasoning, validatedResult.hts_code);
   trace.reasoning_consistency_warning = warning;
 
+  // ── 4b. Optional second-pass verifier (behind ENABLE_VERIFIER=1) ───────
+  // Independent Claude call that re-reads the predicted code's HTS text
+  // and checks whether every named criterion is supported by affirmative
+  // evidence in the description. Disagreement triggers a revision +
+  // confidence cap at "medium".
+  if (process.env.ENABLE_VERIFIER === "1") {
+    const original_hts_code = validatedResult.hts_code;
+    const original_hts_code_8 = validatedResult.hts_code_8;
+    const original_confidence = validatedResult.confidence;
+
+    // Pass through every candidate chunk in the same 4-digit heading
+    // family — that's the verifier's HTS context window. The retriever
+    // already surfaced these; we don't add a new retrieval call.
+    const predicted4 = original_hts_code.slice(0, 4); // "1234"
+    const familyChunks = candidates
+      .filter((c) => c.htsCode.startsWith(predicted4) || c.digitLevel === 0 || c.digitLevel === 2)
+      .map((c) => ({ code: c.htsCode, level: c.digitLevel, text: c.description }));
+
+    try {
+      const { result: ver, trace: vtrace } = await verifyClassification(ctx, {
+        description: input.description,
+        predicted_hts_code: original_hts_code,
+        predicted_hts_code_8: original_hts_code_8,
+        hts_context: familyChunks,
+      });
+
+      if (!ver.agree && ver.revised_hts_code && ver.revised_hts_code_8) {
+        // Revise. Cap confidence at medium (per the design — verifier
+        // disagreement is signal that the original was overreaching).
+        const cappedConfidence: "low" | "medium" | "high" =
+          original_confidence === "high" ? "medium" : original_confidence;
+        validatedResult = {
+          ...validatedResult,
+          hts_code: ver.revised_hts_code,
+          hts_code_8: ver.revised_hts_code_8,
+          confidence: cappedConfidence,
+          reasoning: `${validatedResult.reasoning}\n\n[verifier revised ${original_hts_code} → ${ver.revised_hts_code}: ${ver.revised_reasoning}]`,
+        };
+      }
+
+      trace.verifier = {
+        ran: true,
+        agreed: ver.agree,
+        original_hts_code,
+        original_hts_code_8,
+        original_confidence,
+        revised_hts_code: ver.revised_hts_code,
+        revised_hts_code_8: ver.revised_hts_code_8,
+        revised_reasoning: ver.revised_reasoning,
+        verifier_reasoning: ver.verifier_reasoning,
+        criteria_check: ver.criteria_check,
+        latency_ms: vtrace.latency_ms,
+      };
+    } catch (err) {
+      // Verifier failure is non-fatal — record and continue with the
+      // classifier's original output.
+      trace.verifier = {
+        ran: true,
+        agreed: false,
+        original_hts_code,
+        original_hts_code_8,
+        original_confidence,
+        revised_hts_code: null,
+        revised_hts_code_8: null,
+        revised_reasoning: null,
+        verifier_reasoning: `verifier errored: ${err instanceof Error ? err.message : String(err)}`,
+        criteria_check: [],
+        latency_ms: 0,
+      };
+    }
+  }
+
   // ── 5. Persist trace to audit_log ──────────────────────────────────────
+  trace.result = validatedResult;
   await persistAuditLog(ctx, classificationId, model, trace);
 
   return { result: validatedResult, trace };
