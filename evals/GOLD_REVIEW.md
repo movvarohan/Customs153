@@ -1,35 +1,9 @@
 # Gold Set Review — 100 cases
 Built by `evals/tools/build_gold.py`. Each case is grounded in a CROSS ruling or unambiguous HTS text.
 
-**Status counts:** verified=81 · corrected=10 · disputed=6 · unverifiable=3
+**Status counts:** verified=77 · corrected=12 · disputed=8 · unverifiable=3
 
 **Scored cases (excluded unverifiable):** 97
-
-## Classifier accuracy on this gold set
-
-Run on 2026-05-14 against `claude-sonnet-4-5`, prompt v3.1-2026-05-13. All 97 scored cases.
-
-| metric | value |
-|---|---|
-| top-1 @ 8-digit | 56/97 (57.7%) |
-| top-3 @ 8-digit | 67/97 (69.1%) |
-| top-1 @ 10-digit | 39/97 (40.2%) |
-| chapter-correct top-1 | 84/97 (86.6%) |
-| citation grounding | 92/97 (94.8%) |
-
-**Stratified by classifier-stated confidence:**
-
-| bucket | n | top-1 @ 8d | top-3 @ 8d |
-|---|---:|---:|---:|
-| high | 64 | 42/64 (65.6%) | 50/64 (78.1%) |
-| medium | 30 | 14/30 (46.7%) | 17/30 (56.7%) |
-| low | 3 | 0/3 (0.0%) | 0/3 (0.0%) |
-
-The calibration is healthy: high-confidence cases are meaningfully more accurate than medium, and the 78.1% top-3 on high-confidence means even when the model picks the wrong primary answer, the right code is usually in its considered alternatives.
-
-**Old vs new comparison.** The old buggy 40-case gold reported top-1@8 = 57.5% on this same classifier. The new 97-case gold reports 57.7% — barely moved. That's because the rebuild flipped both directions: the classifier was getting credit for some answers the old gold marked correct that were actually wrong (so it now misses them), and getting punished for some answers the old gold marked wrong that were actually right (so it now scores them). The new number is honest; the old one was noise on top of buggy ground truth.
-
-**Per-chapter accuracy.** Strongest chapters: 19, 30, 73, 76, 87, 90, 96 (all at 100% in the chapters they cover). Weakest: 15, 17, 33 (1/4), 39 (1/5), 40 (0/3), 44 (1/4), 64, 68, 69, 71. The classifier's weak spots cluster in food, plastics, woodware, and ceramics — chapters where chapter notes and material/value tiers are decisive and candidate retrieval may not surface the right note.
 
 ## How to spot-check a citation
 Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.gov/ruling/<NUMBER>`. The product description in the ruling should plausibly match the description in the gold case (CBP descriptions are more technical; we lightly reword into seller language).
@@ -40,7 +14,7 @@ Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.go
 |---|---|---|---|---|---|
 | 1 | Wireless Bluetooth over-ear headphones with rechargeable battery and n | `8518.30.20` | verified | CROSS:H317791 |  |
 | 2 | Men's short-sleeve crew-neck cotton t-shirt, knitted, white, size larg | `6109.10.00` | verified | CROSS:N246940 |  |
-| 3 | USB-C to USB-C charging cable, 6 ft, braided nylon, PD 100W rated | `8544.42.20` | corrected | CROSS:N258119 | 8544.42.90 |
+| 3 | USB-C to USB-C charging cable, 6 ft, braided nylon, PD 100W rated | `8544.42.20` | disputed | CROSS:N258119;CROSS:N281995;CROSS:N007536 | 8544.42.90 |
 | 4 | Lithium-ion 18650 rechargeable battery pack, 5 cells in series with BM | `8507.60.00` | verified | CROSS:N311956 |  |
 | 5 | Men's full-grain leather belt, 1.5 inch wide, with metal pin buckle | `4203.30.00` | verified | CROSS:N291699 |  |
 | 6 | Stainless steel double-wall vacuum-insulated water bottle, 750 ml, wit | `9617.00.10` | verified | CROSS:N353266 |  |
@@ -48,7 +22,7 @@ Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.go
 | 8 | Bamboo end-grain cutting board, 18 in x 12 in x 1.5 in, food-safe fini | `4419.11.00` | verified | CROSS:N288768;HTS-text:4419.11 (2022 HS revision) |  |
 | 9 | LED desk lamp with adjustable arm, USB-powered, painted aluminum base | `9405.21.60` | unverifiable | unverifiable |  |
 | 10 | Rechargeable sonic electric toothbrush with charging stand and replace | `8509.80.50` | verified | CROSS:N333247;CROSS:N275158 |  |
-| 11 | Glazed earthenware coffee mug, 12 oz, printed logo | `6912.00.41` | disputed | HTS-text:6912.00.41 ('Mugs and other steins') |  |
+| 11 | Glazed earthenware coffee mug, 12 oz, printed logo | `6912.00.41` | disputed | HTS-text:6912.00.41 ('Mugs and other steins');CROSS:N262709;CROSS:D83458;CROSS:C85125 |  |
 | 12 | Polypropylene food storage container with snap-on lid, 1 liter, microw | `3924.10.40` | verified | CROSS:N007439;CROSS:N012503 |  |
 | 13 | Smartwatch with heart-rate sensor, GPS, color touchscreen, Bluetooth a | `8517.62.00` | verified | CROSS:N349122;CROSS:H273382 |  |
 | 14 | TPE foam yoga exercise mat, 6 mm thick, 72 in x 24 in, textured non-sl | `9506.91.00` | corrected | CROSS:N260624;CROSS:N357738 | 3918.90.10 |
@@ -68,7 +42,7 @@ Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.go
 | 28 | Women's leather handbag, full-grain top-grain leather, metal hardware, | `4202.21.60` | disputed | CROSS:962022;CROSS:N254786 |  |
 | 29 | Mixed nut assortment: salted roasted cashews, almonds, peanuts, in res | `2008.19.85` | disputed | CROSS:E87234 |  |
 | 30 | Disassembled cycling helmet kit in retail box: outer shell, foam inser | `6506.10.30` | corrected | CROSS:N327204;CROSS:A89252;CROSS:967593 | 6506.10.60 |
-| 31 | Plastic Christmas tree, artificial spruce, 6 ft, in cardboard storage  | `9505.10.25` | verified | CROSS:N268807;CROSS:N302865;CROSS:R01925 |  |
+| 31 | Plastic Christmas tree, artificial spruce, 6 ft, in cardboard storage  | `9505.10.25` | disputed | CROSS:N268807;CROSS:N302865;CROSS:R01925;CROSS:086299 |  |
 | 32 | Imitation pearl necklace, white plastic beads on metal chain with silv | `7117.90.75` | verified | CROSS:D85324;CROSS:C89174;CROSS:H81857 |  |
 | 33 | Plastic LED Halloween pumpkin tabletop decoration, battery-operated, f | `9505.90.60` | verified | CROSS:N236080;CROSS:F84436;CROSS:I89412 |  |
 | 34 | Coffee gift set: 12 oz bag of roasted ground arabica coffee + ceramic  | `0901.21.00` | unverifiable | unverifiable |  |
@@ -86,7 +60,7 @@ Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.go
 | N01 | Honey-oat granola bar, 1.4 oz, individually wrapped, retail snack | `1704.90.35` | GRI 1 | CROSS:N004034 |
 | N02 | Frozen cheese-stuffed ravioli pasta, 1 lb tray, ready to boil | `1902.20.00` | GRI 1 | CROSS:N104806 |
 | N03 | Pure clover honey, glass jar, 16 oz, no additives | `0409.00.00` | GRI 1 | CROSS:H80310 |
-| N04 | Cold-pressed extra-virgin olive oil from Italy, 750 ml glass bottle | `1509.10.20` | GRI 1 | CROSS:N312011 |
+| N04 | Cold-pressed extra-virgin olive oil from Italy, 750 ml glass bottle | `1509.20.20` | GRI 1 | HTS-text:1509.20 (HS 2022 revision);CROSS:N312011 |
 | N05 | SPF 50 broad-spectrum sunscreen lotion, 5 fl oz, water-resistant | `3304.99.50` | GRI 1 | CROSS:N312585 |
 | N06 | Cherry-flavored moisturizing lip balm in 0.15 oz tube, retail | `3304.10.00` | GRI 1 | CROSS:N083580;CROSS:L89629 |
 | N07 | Hydrating sheet face mask, single-use nonwoven impregnated with serum, | `3304.99.50` | GRI 1 | CROSS:N308615 |
@@ -99,7 +73,7 @@ Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.go
 | N14 | Men's bifold leather wallet, full-grain leather, 6 card slots, billfol | `4202.31.60` | GRI 1 | CROSS:J80716 |
 | N15 | Nylon laptop backpack, padded sleeve, 30 L, with multiple zippered com | `4202.92.31` | GRI 1 | CROSS:M83311 |
 | N16 | Genuine leather replacement wristwatch strap, 22 mm width, brown | `9113.90.80` | GRI 1 | CROSS:872221;CROSS:N292811;CROSS:H270725 |
-| N17 | Solid pine wooden picture frame, 8 x 10 inches, glass front, easel bac | `4414.00.00` | GRI 1 | CROSS:N133639;CROSS:N006452;CROSS:N301904 |
+| N17 | Solid pine wooden picture frame, 8 x 10 inches, glass front, easel bac | `4414.90.00` | GRI 1 | HTS-text:4414.90 (HS 2022 revision);CROSS:N133639 |
 | N18 | Pine wood floor wine rack, 12-bottle capacity, freestanding | `4420.90.80` | GRI 1 | CROSS:N029242;CROSS:883159 |
 | N19 | Set of 6 mango wood drink coasters, 4 in diameter, with wooden holder | `4419.90.91` | GRI 1 | CROSS:N240071;CROSS:R04475;CROSS:N059807 |
 | N20 | Spiral-bound notebook, 100 ruled pages, 8.5 x 11 in, paperboard cover | `4820.10.20` | GRI 1 | CROSS:N017801;CROSS:N021609;CROSS:N049615 |
@@ -113,7 +87,7 @@ Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.go
 | N28 | Cotton baseball cap with embroidered logo, 6-panel, adjustable strap | `6505.00.20` | GRI 1 | CROSS:D87558;CROSS:J81417;CROSS:K85562 |
 | N29 | Compact telescoping folding umbrella, 42-inch canopy, polyester fabric | `6601.91.00` | GRI 1 | CROSS:I89374;CROSS:B80015;CROSS:818260 |
 | N30 | Stoneware ceramic dinner plate set, 4 plates, 10.5 in diameter, glazed | `6912.00.45` | GRI 1 | CROSS:L87187;CROSS:A83492;CROSS:C80764 |
-| N31 | Decorative clear glass vase, 10 in tall, machine-made, valued under $0 | `7013.99.50` | GRI 1 (value tier) | CROSS:D87915;CROSS:H87220;CROSS:N241995 |
+| N31 | Decorative clear glass vase, 10 in tall, machine-made, valued $1.50 ea | `7013.99.50` | GRI 1 (value tier) | CROSS:D87915;CROSS:H87220;CROSS:N241995 |
 | N32 | Lead-free crystal stemmed wine glass, 16 oz, machine-made, valued $1.5 | `7013.28.20` | GRI 1 | CROSS:N302114;CROSS:N200619;CROSS:N226603 |
 | N33 | Pre-seasoned cast iron skillet, 12 inch diameter, with helper handle | `7323.91.50` | GRI 1 | CROSS:R04182;CROSS:H185697 |
 | N34 | Aluminum nonstick frying pan, 10 inch, with riveted handle, dishwasher | `7615.10.30` | GRI 1 | CROSS:N286356 |
@@ -123,7 +97,7 @@ Each `CROSS:N...` or `CROSS:H...` ruling is fetchable at `https://rulings.cbp.go
 | N38 | Stainless steel BBQ spatula with built-in bottle opener, 18 in overall | `8215.99.50` | GRI 1 | CROSS:963975;CROSS:N331015 |
 | N39 | 1700W countertop air fryer with 5.8 qt basket, digital touchscreen con | `8516.60.40` | GRI 1 | CROSS:H321189;CROSS:N298195 |
 | N40 | Robot vacuum cleaner with self-charging dock, lidar mapping, app contr | `8508.11.00` | GRI 1 | CROSS:N312025;CROSS:N326460;CROSS:N356793 |
-| N41 | LED replacement light bulb, A19 shape, E26 base, 9W (60W equivalent),  | `8539.50.00` | GRI 1 | CROSS:N303766;CROSS:N300968;CROSS:N301374 |
+| N41 | LED replacement light bulb, A19 shape, E26 base, 9W (60W equivalent),  | `8539.52.00` | GRI 1 | HTS-text:8539.52 (HS 2022 revision);CROSS:N303766 |
 | N42 | Stand-up electric scooter, 250W motor, lithium battery, foldable, top  | `8711.60.00` | GRI 1 | CROSS:N297093;CROSS:N298922;CROSS:N325922 |
 | N43 | Digital kitchen scale, 11 lb capacity, tare function, LCD display, but | `8423.10.00` | GRI 1 | CROSS:N017145;CROSS:N017314;CROSS:N061927 |
 | N44 | Portable power bank, 10000 mAh lithium-ion, dual USB-A output, USB-C i | `8507.60.00` | GRI 1 | CROSS:N301461;CROSS:N306841 |
