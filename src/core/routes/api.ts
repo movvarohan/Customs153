@@ -29,6 +29,7 @@ import { generateCounterfactuals } from "@/core/agents/counterfactual";
 import { generateAuditDefense } from "@/core/agents/audit-defense";
 import { verifyAgainstCross } from "@/core/agents/cross-verifier";
 import { runDebate } from "@/core/agents/debate";
+import { runCopilot } from "@/core/agents/copilot";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import {
   MOCK_ENTRIES,
@@ -1098,6 +1099,33 @@ apiRoute.post("/control-room", async (c) => {
         total_duty_usd_cents: duty?.total_duty_usd_cents ?? null,
       },
     });
+  });
+});
+
+// ── POST /api/copilot ────────────────────────────────────────────────────
+// Conversational tool-using agent. Body { messages: [{role, content}] }.
+// Streams text_delta / tool_call / tool_result / done as NDJSON.
+const CopilotBody = z.object({
+  messages: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() }))
+    .min(1)
+    .max(40),
+});
+apiRoute.post("/copilot", async (c) => {
+  const ctx = c.var.ctx;
+  await seedDemoFxRates(ctx);
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = CopilotBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  return stream(c, async (s) => {
+    c.header("content-type", "application/x-ndjson");
+    let chain: Promise<unknown> = Promise.resolve();
+    const emit = async (o: unknown): Promise<void> => {
+      chain = chain.then(() => s.write(JSON.stringify(o) + "\n"));
+      await chain;
+    };
+    await runCopilot(ctx, parsed.data.messages, emit);
   });
 });
 
