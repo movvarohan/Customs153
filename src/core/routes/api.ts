@@ -32,6 +32,7 @@ import { runDebate } from "@/core/agents/debate";
 import { runCopilot } from "@/core/agents/copilot";
 import { runTariffSimulation } from "@/core/lib/tariff-simulator";
 import { analyzeSourcing } from "@/core/agents/sourcing-intel";
+import { analyzeReroute } from "@/core/agents/reroute-intel";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import {
   MOCK_ENTRIES,
@@ -1212,6 +1213,44 @@ apiRoute.post("/sourcing-intel", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
   try {
     const result = await analyzeSourcing(ctx, parsed.data);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+// ── POST /api/reroute-intel ──────────────────────────────────────────────
+// Policy Lab destination brief: researches one destination country for the
+// importer's whole catalog (named clusters, blended cost index, labor,
+// freight, risks) and returns the unit-cost premium the lab feeds into
+// break-even economics.
+const COUNTRY_NAMES: Record<string, string> = { VN: "Vietnam", MX: "Mexico", IN: "India", TH: "Thailand", MY: "Malaysia", ID: "Indonesia", BD: "Bangladesh", KH: "Cambodia" };
+const RerouteIntelBody = z.object({
+  destination_iso2: z.string().regex(/^[A-Z]{2}$/),
+});
+apiRoute.post("/reroute-intel", async (c) => {
+  const ctx = c.var.ctx;
+  const customerId = await ensureDemoCustomer(ctx);
+  await seedSkuMemoryIfEmpty(ctx, customerId);
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = RerouteIntelBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  const iso = parsed.data.destination_iso2.toUpperCase();
+
+  // Build a category summary from the importer's catalog so the research is
+  // about THIS catalog's product mix, not a generic country profile.
+  const skus = await listSkuMemory(ctx, customerId, 100);
+  const category_summary = skus.length > 0
+    ? skus.slice(0, 10).map((s) => s.canonical_description).join("; ")
+    : "Consumer electronics and accessories imported from China (Amazon FBA catalog)";
+
+  try {
+    const result = await analyzeReroute(ctx, {
+      destination_iso2: iso,
+      destination_name: COUNTRY_NAMES[iso] ?? iso,
+      category_summary,
+    });
     return c.json(result);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);

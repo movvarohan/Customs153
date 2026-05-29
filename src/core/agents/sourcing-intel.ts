@@ -16,16 +16,13 @@
 // The LLM supplies researched judgement; the duty figures and the macro data
 // are real, and every run carries its web + World Bank citations.
 
-import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { AppContext } from "@/core/app-context";
 import { calculateDuty } from "./duty-calculator";
-import { fetchCountryProfile, summarizeProfile } from "@/core/lib/research/world-bank";
+import { runResearchLoop, type SourceCitation } from "@/core/lib/research/research-loop";
 
 export const SOURCING_INTEL_PROMPT_VERSION = "v3-research-2026-05-29";
 const MAX_OUTPUT_TOKENS = 8000;
-const MAX_ROUNDS = 6;
-const MAX_WEB_SEARCHES = 6;
 
 const Hub = z.object({
   country_iso2: z.string().regex(/^[A-Z]{2}$/),
@@ -36,7 +33,7 @@ const Hub = z.object({
   lng: z.number().min(-180).max(180),
   feasibility: z.enum(["high", "medium", "low"]),
   rationale: z.string().min(10),
-  example_suppliers: z.array(z.string()).min(1).max(6),
+  example_suppliers: z.array(z.string()).min(1).max(12),
   unit_cost_index: z.number().min(40).max(300), // China = 100
   avg_labor_cost_note: z.string().min(4),
   manufacturing_availability: z.enum(["high", "medium", "low"]),
@@ -122,14 +119,6 @@ const REPORT_SCHEMA = {
   required: ["current_hub", "relocation_options", "relief_mechanisms", "second_order_effects", "summary"],
 };
 
-const WORLD_BANK_SCHEMA = {
-  type: "object" as const,
-  properties: {
-    country_iso2: { type: "string", description: "ISO-2 country code, e.g. VN, IN, MX, TH, MY, BD" },
-  },
-  required: ["country_iso2"],
-};
-
 const SYSTEM_PROMPT = `You are a trade-strategy and supply-chain research analyst for a US importer responding to tariffs. Produce a relocation + customs-relief dossier for the given product, backed by RESEARCH, not memory.
 
 Process:
@@ -165,11 +154,6 @@ export interface PricedHub extends HubT {
   duty_delta_usd_cents: number;
 }
 
-export interface SourceCitation {
-  title: string;
-  url: string;
-}
-
 export interface SourcingIntelResult {
   promptVersion: string;
   input: SourcingIntelInput;
@@ -186,29 +170,7 @@ export interface SourcingIntelResult {
   research: { web_searches: number; world_bank_lookups: number };
 }
 
-// The web_search server tool isn't in the installed SDK's typed tool union,
-// so it's declared as a raw object and cast at the call boundary.
-const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: MAX_WEB_SEARCHES } as unknown as Anthropic.Messages.ToolUnion;
-
-/** Pull {title,url} citations out of web_search_tool_result blocks (not in the SDK types). */
-function extractCitations(content: unknown[]): { cites: SourceCitation[]; searches: number } {
-  const cites: SourceCitation[] = [];
-  let searches = 0;
-  for (const b of content) {
-    const blk = b as { type?: string; content?: unknown };
-    if (blk.type === "server_tool_use") searches += 1;
-    if (blk.type === "web_search_tool_result" && Array.isArray(blk.content)) {
-      for (const r of blk.content) {
-        const item = r as { url?: string; title?: string };
-        if (item.url) cites.push({ title: (item.title ?? item.url).slice(0, 160), url: item.url });
-      }
-    }
-  }
-  return { cites, searches };
-}
-
 export async function analyzeSourcing(ctx: AppContext, input: SourcingIntelInput): Promise<SourcingIntelResult> {
-  const model = ctx.config.defaultModel;
   const user = `Product: ${input.description}
 HTS (8-digit): ${input.hts_code_8}
 Current country of origin: ${input.current_country_iso2}
@@ -216,67 +178,19 @@ Annual import value (customs value): $${(input.annual_value_usd_cents / 100).toL
 
 Research relocation hubs (named factories, freight availability), pull World Bank labor/capacity data for the candidate countries, then call ${REPORT_TOOL}.`;
 
-  const messages: Anthropic.Messages.MessageParam[] = [{ role: "user", content: user }];
-  const tools: Anthropic.Messages.ToolUnion[] = [
-    WEB_SEARCH_TOOL,
-    { name: WORLD_BANK_TOOL, description: "Real World Bank macro data for a country: GDP per capita (labor-cost proxy), manufacturing % of GDP, and labor-force size.", input_schema: WORLD_BANK_SCHEMA },
-    { name: REPORT_TOOL, description: "Report the final sourcing & relief dossier.", input_schema: REPORT_SCHEMA },
-  ];
-
-  const allCites: SourceCitation[] = [];
-  const wbSources: SourceCitation[] = [];
-  let webSearchCount = 0;
-  let worldBankCount = 0;
-  let parsedReport: SourcingIntelOutputT | null = null;
-
-  for (let round = 0; round < MAX_ROUNDS && !parsedReport; round++) {
-    const forceReport = round === MAX_ROUNDS - 1;
-    const response = await ctx.anthropic.messages.create({
-      model,
-      max_tokens: MAX_OUTPUT_TOKENS,
-      system: SYSTEM_PROMPT,
-      tools,
-      tool_choice: forceReport ? { type: "tool", name: REPORT_TOOL } : { type: "auto" },
-      messages,
-    });
-
-    const { cites, searches } = extractCitations(response.content as unknown[]);
-    allCites.push(...cites);
-    webSearchCount += searches;
-
-    const toolUses = response.content.filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use");
-    const report = toolUses.find((t) => t.name === REPORT_TOOL);
-    if (report) {
-      const parsed = SourcingIntelOutput.safeParse(report.input);
+  const { data: parsedReport, sources, research } = await runResearchLoop<SourcingIntelOutputT>(ctx, {
+    system: SYSTEM_PROMPT,
+    user,
+    reportToolName: REPORT_TOOL,
+    reportToolDescription: "Report the final sourcing & relief dossier.",
+    reportSchema: REPORT_SCHEMA,
+    maxTokens: MAX_OUTPUT_TOKENS,
+    parse: (input) => {
+      const parsed = SourcingIntelOutput.safeParse(input);
       if (!parsed.success) throw new Error(`sourcing-intel: validation failed: ${parsed.error.message}`);
-      parsedReport = parsed.data;
-      break;
-    }
-
-    messages.push({ role: "assistant", content: response.content });
-
-    const wbCalls = toolUses.filter((t) => t.name === WORLD_BANK_TOOL);
-    if (wbCalls.length > 0) {
-      const results: Anthropic.Messages.ToolResultBlockParam[] = [];
-      for (const tu of wbCalls) {
-        worldBankCount += 1;
-        const iso = String((tu.input as { country_iso2?: string }).country_iso2 ?? "").toUpperCase();
-        try {
-          const profile = await fetchCountryProfile(iso);
-          wbSources.push({ title: `World Bank indicators — ${profile.country_name ?? iso}`, url: profile.source_url });
-          results.push({ type: "tool_result", tool_use_id: tu.id, content: summarizeProfile(profile) });
-        } catch (e) {
-          results.push({ type: "tool_result", tool_use_id: tu.id, content: `World Bank lookup failed: ${e instanceof Error ? e.message : String(e)}`, is_error: true });
-        }
-      }
-      messages.push({ role: "user", content: results });
-    } else {
-      // Model searched/talked but didn't call a client tool or report — nudge it forward.
-      messages.push({ role: "user", content: `Continue your research if needed, then call ${REPORT_TOOL} with the dossier.` });
-    }
-  }
-
-  if (!parsedReport) throw new Error("sourcing-intel: no report produced");
+      return parsed.data;
+    },
+  });
 
   // Price each hub through the real deterministic duty calculator.
   const current = await calculateDuty(ctx, {
@@ -305,6 +219,7 @@ Research relocation hubs (named factories, freight availability), pull World Ban
     const landed = goods + dutyCents;
     priced.push({
       ...o,
+      example_suppliers: o.example_suppliers.slice(0, 6),
       annual_goods_usd_cents: goods,
       annual_duty_usd_cents: dutyCents,
       total_landed_usd_cents: landed,
@@ -313,16 +228,6 @@ Research relocation hubs (named factories, freight availability), pull World Ban
     });
   }
   priced.sort((a, b) => a.total_landed_usd_cents - b.total_landed_usd_cents);
-
-  // De-dupe citations by URL; web results first, then World Bank sources.
-  const seen = new Set<string>();
-  const sources: SourceCitation[] = [];
-  for (const c of [...allCites, ...wbSources]) {
-    if (seen.has(c.url)) continue;
-    seen.add(c.url);
-    sources.push(c);
-    if (sources.length >= 14) break;
-  }
 
   return {
     promptVersion: SOURCING_INTEL_PROMPT_VERSION,
@@ -335,6 +240,6 @@ Research relocation hubs (named factories, freight availability), pull World Ban
     second_order_effects: parsedReport.second_order_effects,
     summary: parsedReport.summary,
     sources,
-    research: { web_searches: webSearchCount, world_bank_lookups: worldBankCount },
+    research,
   };
 }
