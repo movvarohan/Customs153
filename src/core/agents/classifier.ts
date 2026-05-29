@@ -25,6 +25,7 @@ import {
   CLASSIFIER_SYSTEM_PROMPT,
 } from "./prompts/classifier-system";
 import { verifyClassification } from "./verifier";
+import { lookupSkuMemory, upsertSkuMemory } from "@/core/lib/sku-memory";
 
 const TOP_K = 50;
 const MAX_OUTPUT_TOKENS = 2048;
@@ -114,6 +115,13 @@ export interface LineItemDescription {
   quantity?: number;
   unit_value_usd?: number;
   country_of_origin?: string;
+  /**
+   * If set, the classifier looks up sku_master for prior decisions on this
+   * description. A broker-confirmed prior is injected into the user message
+   * as a strong hint (the classifier still reasons fully — it can override
+   * the prior with a documented reason). When absent, no memory lookup.
+   */
+  customer_id?: string;
 }
 
 export interface CandidateMeta {
@@ -139,6 +147,13 @@ export interface ClassifyTrace {
   }>;
   /** Non-null when the predicted hts_code's heading isn't referenced in reasoning text. */
   reasoning_consistency_warning: string | null;
+  /** Per-customer SKU memory: prior decision retrieved (or null if none / no customer). */
+  sku_memory_hit: {
+    source: "agent" | "broker";
+    hts_code: string;
+    hts_code_8: string;
+    last_classified_at: string;
+  } | null;
   /** Set when the verifier ran (ENABLE_VERIFIER=1) regardless of outcome. */
   verifier?: {
     ran: boolean;
@@ -282,8 +297,13 @@ export async function classify(
 
   const candidateCodes = new Set(candidates.map((c) => c.htsCode));
 
+  // ── 1b. SKU memory: per-customer prior decision on the same description ─
+  const skuMemoryHit = input.customer_id
+    ? await lookupSkuMemory(ctx, input.customer_id, input.description)
+    : null;
+
   // ── 2. Build the user message with the candidate list ──────────────────
-  const userMessage = buildUserMessage(input, candidates);
+  const userMessage = buildUserMessage(input, candidates, skuMemoryHit);
 
   // ── 3. Call Claude with structured tool use; retry once on validation fail ─
   const trace: ClassifyTrace = {
@@ -299,6 +319,14 @@ export async function classify(
     userMessage,
     attempts: [],
     reasoning_consistency_warning: null,
+    sku_memory_hit: skuMemoryHit
+      ? {
+          source: skuMemoryHit.source,
+          hts_code: skuMemoryHit.current_hts_code,
+          hts_code_8: skuMemoryHit.current_hts_code_8,
+          last_classified_at: skuMemoryHit.last_classified_at,
+        }
+      : null,
     result: null as unknown as ClassificationResultT, // filled below
   };
 
@@ -504,12 +532,31 @@ export async function classify(
 
   // ── 5. Persist trace to audit_log ──────────────────────────────────────
   trace.result = validatedResult;
+  // ── 6. SKU memory: store the agent's prediction so the next run sees it ─
+  if (input.customer_id) {
+    try {
+      await upsertSkuMemory(ctx, {
+        customer_id: input.customer_id,
+        description: input.description,
+        hts_code: validatedResult.hts_code,
+        classification_id: classificationId,
+        source: "agent",
+      });
+    } catch (e) {
+      console.warn(`[classifier] sku memory upsert failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   await persistAuditLog(ctx, classificationId, model, trace);
 
   return { result: validatedResult, trace };
 }
 
-function buildUserMessage(input: LineItemDescription, candidates: Array<CandidateMeta & { score: number }>): string {
+function buildUserMessage(
+  input: LineItemDescription,
+  candidates: Array<CandidateMeta & { score: number }>,
+  skuMemoryHit: import("@/core/lib/sku-memory").SkuMemoryRow | null = null,
+): string {
   const optBits: string[] = [];
   if (input.quantity !== undefined) optBits.push(`quantity: ${input.quantity}`);
   if (input.unit_value_usd !== undefined) optBits.push(`unit value: $${input.unit_value_usd.toFixed(2)}`);
@@ -520,10 +567,23 @@ function buildUserMessage(input: LineItemDescription, candidates: Array<Candidat
     .map((c, i) => `  ${String(i + 1).padStart(2)}. [${c.score.toFixed(3)}] ${c.htsCode}  —  ${c.description}`)
     .join("\n");
 
+  const priorBlock = skuMemoryHit
+    ? `
+
+**Prior decision on this importer's SKU** (${skuMemoryHit.source === "broker" ? "broker-confirmed" : "agent-only — NOT yet broker-confirmed"} on ${skuMemoryHit.last_classified_at.slice(0, 10)}):
+  HTS code: ${skuMemoryHit.current_hts_code}
+
+${skuMemoryHit.source === "broker"
+        ? "A licensed broker classified the same SKU under this code previously. Strongly prefer this classification unless the description shows materially different content from the canonical SKU. If you do override, state explicitly why in `reasoning`."
+        : "An earlier agent run produced this code on the same description. It has NOT been broker-confirmed. Use it as a weak prior only — re-derive the classification under GRI and cite from the candidate list."
+      }
+`
+    : "";
+
   return `Product description from the importer:
 """
 ${input.description.trim()}${optLine}
-"""
+"""${priorBlock}
 
 Candidate HTS codes retrieved from the schedule (ranked by semantic similarity, most similar first). Cite only codes from this list:
 ${candidateLines}

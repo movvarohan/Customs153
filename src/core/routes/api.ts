@@ -24,6 +24,7 @@ import { loadTariffRates } from "@/core/lib/tariff-rates";
 import { parseEntrySummary } from "@/core/agents/entry-summary-parser";
 import { findRefundOpportunities } from "@/core/agents/psc-finder";
 import { renderRefundReportToBuffer } from "@/core/lib/render-refund-pdf";
+import { ensureDemoCustomer, listSkuMemory, upsertSkuMemory } from "@/core/lib/sku-memory";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
 import { withRetry } from "@/core/lib/retry";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
@@ -128,6 +129,7 @@ apiRoute.get("/", (c) =>
 apiRoute.post("/process-invoice", async (c) => {
   const ctx = c.var.ctx;
   await seedDemoFxRates(ctx);
+  const customerId = await ensureDemoCustomer(ctx);
 
   const tmpPaths: string[] = [];
   try {
@@ -198,7 +200,7 @@ apiRoute.post("/process-invoice", async (c) => {
         const settled = await mapWithConcurrency(lines, CONCURRENCY, async (t) => {
           const tStart = Date.now();
           try {
-            const { result: classification } = await withRetry(
+            const { result: classification, trace: classifyTrace } = await withRetry(
               () =>
                 classify(
                   ctx,
@@ -206,6 +208,7 @@ apiRoute.post("/process-invoice", async (c) => {
                     description: t.line.description,
                     quantity: t.line.quantity,
                     unit_value_usd: t.line.unit_value / 100,
+                    customer_id: customerId,
                     ...(t.country_of_origin ? { country_of_origin: t.country_of_origin } : {}),
                   },
                   {
@@ -220,6 +223,13 @@ apiRoute.post("/process-invoice", async (c) => {
                 ),
               { attempts: 3, baseMs: 2000 },
             );
+            if (classifyTrace.sku_memory_hit) {
+              await emit({
+                type: "sku_memory_hit",
+                line_index: t.line_index,
+                memory: classifyTrace.sku_memory_hit,
+              });
+            }
             const classifyMs = Date.now() - tStart;
             await emit({
               type: "line_classified",
@@ -528,5 +538,48 @@ apiRoute.post("/render-refund-pdf", async (c) => {
   // Hono accepts ArrayBuffer / Uint8Array bodies; cast Buffer view explicitly.
   return c.body(pdf as unknown as ArrayBuffer);
 });
+
+// ── Broker copilot: queue + per-customer SKU memory + correction ─────────
+// All keyed on the demo customer for now. Production multi-tenant routes
+// would scope by importer-of-record on auth.
+//
+// GET  /api/broker/sku-memory       — list all SKU memory rows
+// POST /api/broker/confirm          — broker approves an agent prediction
+//                                     ({ description, hts_code })
+// POST /api/broker/correct          — broker edits a classification
+//                                     ({ description, hts_code }) — same
+//                                     handler as confirm but semantically
+//                                     a "this was wrong, here's what it
+//                                     should be" action.
+apiRoute.get("/broker/sku-memory", async (c) => {
+  const ctx = c.var.ctx;
+  const customerId = await ensureDemoCustomer(ctx);
+  const rows = await listSkuMemory(ctx, customerId);
+  return c.json({ customer_id: customerId, rows });
+});
+
+const BrokerConfirmBody = z.object({
+  description: z.string().min(1),
+  hts_code: z.string().regex(/^\d{4}\.\d{2}\.\d{2}\.\d{2}$/, "must be 10-digit XXXX.XX.XX.XX"),
+});
+
+async function handleBrokerCorrect(c: import("hono").Context<HonoEnv>) {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = BrokerConfirmBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  const customerId = await ensureDemoCustomer(ctx);
+  await upsertSkuMemory(ctx, {
+    customer_id: customerId,
+    description: parsed.data.description,
+    hts_code: parsed.data.hts_code,
+    classification_id: null,
+    source: "broker",
+  });
+  return c.json({ ok: true });
+}
+apiRoute.post("/broker/confirm", handleBrokerCorrect);
+apiRoute.post("/broker/correct", handleBrokerCorrect);
 
 void z; // keep zod import even if no top-level uses inside this file
