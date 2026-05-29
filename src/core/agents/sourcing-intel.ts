@@ -1,52 +1,50 @@
 // Sourcing & customs-relief intelligence — the second-order-effects agent.
 //
-// Tariffs have second-order effects: manufacturing relocates, and a stack of
-// customs-relief mechanisms (FTA preference, first-sale valuation, drawback,
-// Foreign-Trade Zones, Section 301 exclusions) can legally cut the duty bill
-// without moving anything. For a given product this agent reasons about:
-//   1. WHERE the manufacturing could realistically move (which countries
-//      actually make this product category, ranked by ease-of-move), and
-//   2. HOW MUCH each move changes the duty — grounded by re-running the
-//      deterministic duty calculator for each candidate country, not guessed.
-//   3. WHICH customs-relief mechanisms apply and how.
-//   4. The SECOND-ORDER trade-offs (lead time, MOQ, origin rules, etc.).
-//
-// The LLM supplies the strategy; the duty deltas are real math.
+// Tariffs move factories and trigger customs-relief strategy. For a product
+// this agent researches:
+//   1. Named manufacturing HUBS the product could relocate to (city + region
+//      + example supplier ecosystem), with coordinates so they plot on a map.
+//   2. The full LANDED-COST picture per hub: a unit-cost index vs China, the
+//      resulting annual goods cost, the REAL duty (re-run through the
+//      deterministic calculator on the adjusted customs value), and total
+//      landed cost + delta — plus lead time, ramp, MOQ.
+//   3. Customs-relief mechanisms (FTA, first-sale, drawback, FTZ, 301
+//      exclusions) and second-order effects.
+// The LLM supplies the research and the cost indices; the duty figures are
+// real math.
 
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { AppContext } from "@/core/app-context";
 import { calculateDuty } from "./duty-calculator";
 
-export const SOURCING_INTEL_PROMPT_VERSION = "v1-2026-05-29";
-const MAX_OUTPUT_TOKENS = 3000;
+export const SOURCING_INTEL_PROMPT_VERSION = "v2-2026-05-29";
+const MAX_OUTPUT_TOKENS = 4096;
+
+const Hub = z.object({
+  country_iso2: z.string().regex(/^[A-Z]{2}$/),
+  country_name: z.string(),
+  hub_city: z.string(),
+  hub_region: z.string(),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  feasibility: z.enum(["high", "medium", "low"]),
+  rationale: z.string().min(10),
+  example_suppliers: z.array(z.string()).min(1).max(6),
+  unit_cost_index: z.number().min(40).max(300), // China = 100
+  ramp_time_months: z.number().min(0).max(48),
+  lead_time_note: z.string(),
+  moq_note: z.string(),
+});
 
 export const SourcingIntelOutput = z.object({
-  relocation_options: z
-    .array(
-      z.object({
-        country_iso2: z.string().regex(/^[A-Z]{2}$/),
-        country_name: z.string(),
-        feasibility: z.enum(["high", "medium", "low"]),
-        rationale: z.string().min(10),
-      }),
-    )
-    .min(1)
-    .max(5),
+  current_hub: z.object({ city: z.string(), region: z.string(), lat: z.number(), lng: z.number() }),
+  relocation_options: z.array(Hub).min(1).max(5),
   relief_mechanisms: z
-    .array(
-      z.object({
-        mechanism: z.string(),
-        applicability: z.enum(["likely", "possible", "unlikely"]),
-        how: z.string().min(10),
-      }),
-    )
+    .array(z.object({ mechanism: z.string(), applicability: z.enum(["likely", "possible", "unlikely"]), how: z.string().min(10), est_savings_pct: z.number().min(0).max(100).nullable() }))
     .min(1)
     .max(6),
-  second_order_effects: z
-    .array(z.object({ factor: z.string(), note: z.string().min(8) }))
-    .min(1)
-    .max(6),
+  second_order_effects: z.array(z.object({ factor: z.string(), note: z.string().min(8) })).min(1).max(6),
   summary: z.string().min(20),
 });
 export type SourcingIntelOutputT = z.infer<typeof SourcingIntelOutput>;
@@ -55,6 +53,12 @@ const TOOL_NAME = "report_sourcing_intel";
 const TOOL_SCHEMA = {
   type: "object" as const,
   properties: {
+    current_hub: {
+      type: "object",
+      description: "The current manufacturing hub for this product (city + region of the current country of origin) with coordinates.",
+      properties: { city: { type: "string" }, region: { type: "string" }, lat: { type: "number" }, lng: { type: "number" } },
+      required: ["city", "region", "lat", "lng"],
+    },
     relocation_options: {
       type: "array",
       minItems: 1,
@@ -64,10 +68,19 @@ const TOOL_SCHEMA = {
         properties: {
           country_iso2: { type: "string", pattern: "^[A-Z]{2}$" },
           country_name: { type: "string" },
+          hub_city: { type: "string", description: "A real manufacturing city/cluster for this product category, e.g. Bắc Ninh, Chennai, Monterrey" },
+          hub_region: { type: "string", description: "The industrial corridor / what it's known for" },
+          lat: { type: "number" },
+          lng: { type: "number" },
           feasibility: { type: "string", enum: ["high", "medium", "low"] },
-          rationale: { type: "string", description: "Why this product category can move here — existing supplier base, capability, ramp time" },
+          rationale: { type: "string" },
+          example_suppliers: { type: "array", items: { type: "string" }, description: "Named contract manufacturers / OEM types operating there for this product category (research)" },
+          unit_cost_index: { type: "number", description: "Per-unit ex-works cost relative to China=100 (e.g. 108 = 8% more expensive, 92 = 8% cheaper)" },
+          ramp_time_months: { type: "number", description: "Realistic months to qualify a supplier and reach volume" },
+          lead_time_note: { type: "string", description: "Ocean transit / lead-time change vs China" },
+          moq_note: { type: "string", description: "Minimum-order-quantity implications during ramp" },
         },
-        required: ["country_iso2", "country_name", "feasibility", "rationale"],
+        required: ["country_iso2", "country_name", "hub_city", "hub_region", "lat", "lng", "feasibility", "rationale", "example_suppliers", "unit_cost_index", "ramp_time_months", "lead_time_note", "moq_note"],
       },
     },
     relief_mechanisms: {
@@ -77,41 +90,38 @@ const TOOL_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          mechanism: { type: "string", description: "e.g. USMCA preference, First-sale valuation, Duty drawback, Foreign-Trade Zone, Section 301 exclusion, Section 321 de minimis" },
+          mechanism: { type: "string" },
           applicability: { type: "string", enum: ["likely", "possible", "unlikely"] },
-          how: { type: "string", description: "How it works for this product and what the importer must do" },
+          how: { type: "string" },
+          est_savings_pct: { type: ["number", "null"], description: "Rough % of the duty bill this could save, or null" },
         },
-        required: ["mechanism", "applicability", "how"],
+        required: ["mechanism", "applicability", "how", "est_savings_pct"],
       },
     },
     second_order_effects: {
       type: "array",
       minItems: 1,
       maxItems: 6,
-      items: {
-        type: "object",
-        properties: { factor: { type: "string" }, note: { type: "string" } },
-        required: ["factor", "note"],
-      },
+      items: { type: "object", properties: { factor: { type: "string" }, note: { type: "string" } }, required: ["factor", "note"] },
     },
     summary: { type: "string" },
   },
-  required: ["relocation_options", "relief_mechanisms", "second_order_effects", "summary"],
+  required: ["current_hub", "relocation_options", "relief_mechanisms", "second_order_effects", "summary"],
 };
 
-const SYSTEM_PROMPT = `You are a trade-strategy advisor for a US importer. Given a product, its HTS code, current country of origin, and annual import value, analyze the SECOND-ORDER strategy a sophisticated importer would consider in response to tariffs.
+const SYSTEM_PROMPT = `You are a trade-strategy and supply-chain advisor for a US importer responding to tariffs. For the given product, do the research a sourcing consultant would and produce a relocation + customs-relief dossier.
 
-Produce four things:
+current_hub: name the city/region where this product is most likely made today in its current country of origin, with approximate lat/lng.
 
-1. relocation_options — 3–5 countries the manufacturing of THIS product category could realistically move to, ranked by feasibility. Be specific and honest: name countries that genuinely have a supplier base for this product type (e.g. electronics → Vietnam, Mexico, India, Taiwan; apparel → Vietnam, Bangladesh, India; furniture → Vietnam, Malaysia). "feasibility" reflects how easily production moves there — existing ecosystem, tooling, labor, ramp time — NOT just the duty rate. Give a one-to-two sentence rationale per country.
+relocation_options (3–5, ranked by feasibility): for each, name a REAL manufacturing city/cluster that actually makes this product category — be specific (e.g. electronics: Bắc Ninh / Bac Giang Vietnam, Chennai / Sri City India, Monterrey Mexico, Penang Malaysia; apparel: Dhaka Bangladesh, Hanoi Vietnam, Tiruppur India; furniture: Binh Duong Vietnam). Give approximate lat/lng for the city. List example_suppliers — named contract manufacturers or the OEM ecosystem operating there for this category (e.g. "Luxshare, GoerTek (audio EMS)", "Foxconn Chennai", "regional cut-and-sew clusters"). Give a unit_cost_index relative to China=100 reflecting realistic ex-works cost (most low-cost countries are within 90–120; Mexico/Eastern Europe higher; some cheaper), ramp_time_months, a lead_time_note, and a moq_note. feasibility reflects ecosystem maturity and ramp risk, not the duty.
 
-2. relief_mechanisms — which US customs-relief tools apply to THIS product, each with applicability (likely / possible / unlikely) and a concrete "how." Consider: FTA preference (USMCA if from Mexico/Canada and the rule of origin is met), first-sale valuation (dutiable value = the first sale in a multi-tier transaction, not the price to the US buyer), duty drawback (refund of duty on imported inputs that are later exported), Foreign-Trade Zones (defer/avoid duty on re-exports, inverted-tariff relief), Section 301 exclusions (if USTR has an active exclusion for the HTS line), Section 321 de minimis (note this is being curtailed). Only list mechanisms that plausibly apply; mark a stretch as "unlikely" rather than omitting if it's worth flagging.
+relief_mechanisms: FTA/USMCA preference, first-sale valuation, duty drawback, Foreign-Trade Zones, Section 301 exclusions, Section 321 — each with applicability (likely/possible/unlikely), a concrete how, and est_savings_pct (rough % of the duty bill, or null).
 
-3. second_order_effects — the trade-offs and ripple effects: lead time and MOQ changes, supplier quality/ramp risk, tariff stacking (301 + 232 + AD/CVD), substantial-transformation / origin rules (a real move must change origin, not transship), reshoring incentives, inventory/working-capital effects.
+second_order_effects: lead-time/MOQ, supplier ramp/quality, tariff stacking, substantial-transformation origin rules, reshoring incentives, working capital.
 
-4. summary — 2–3 sentences a CFO can act on.
+summary: 2–3 sentences a CFO can act on.
 
-Be rigorous and honest. Do NOT suggest origin misdeclaration or transshipment to fake origin. Do NOT invent FTAs or exclusions. Ground claims in real US customs practice. Call the report_sourcing_intel tool.`;
+Be rigorous and specific — name real places and real supplier ecosystems. Do NOT suggest transshipment/origin-faking or invent FTAs. Call report_sourcing_intel.`;
 
 export interface SourcingIntelInput {
   description: string;
@@ -120,22 +130,38 @@ export interface SourcingIntelInput {
   annual_value_usd_cents: number;
 }
 
-export interface RelocationPriced {
+export interface PricedHub {
   country_iso2: string;
   country_name: string;
+  hub_city: string;
+  hub_region: string;
+  lat: number;
+  lng: number;
   feasibility: "high" | "medium" | "low";
   rationale: string;
-  /** Real duty under this country, from the deterministic calculator. */
+  example_suppliers: string[];
+  unit_cost_index: number;
+  ramp_time_months: number;
+  lead_time_note: string;
+  moq_note: string;
+  /** annual goods cost = current value × unit_cost_index/100 */
+  annual_goods_usd_cents: number;
+  /** real duty on the adjusted customs value */
   annual_duty_usd_cents: number;
-  /** Change vs the current country (negative = savings). */
+  /** goods + duty */
+  total_landed_usd_cents: number;
+  /** total landed vs current total landed (negative = cheaper) */
+  landed_delta_usd_cents: number;
   duty_delta_usd_cents: number;
 }
 
 export interface SourcingIntelResult {
   promptVersion: string;
   input: SourcingIntelInput;
+  current_hub: SourcingIntelOutputT["current_hub"];
   current_annual_duty_usd_cents: number;
-  relocation_options: RelocationPriced[];
+  current_total_landed_usd_cents: number;
+  relocation_options: PricedHub[];
   relief_mechanisms: SourcingIntelOutputT["relief_mechanisms"];
   second_order_effects: SourcingIntelOutputT["second_order_effects"];
   summary: string;
@@ -146,15 +172,15 @@ export async function analyzeSourcing(ctx: AppContext, input: SourcingIntelInput
   const user = `Product: ${input.description}
 HTS (8-digit): ${input.hts_code_8}
 Current country of origin: ${input.current_country_iso2}
-Annual import value: $${(input.annual_value_usd_cents / 100).toLocaleString()}
+Annual import value (customs value): $${(input.annual_value_usd_cents / 100).toLocaleString()}
 
-Analyze relocation options, customs-relief mechanisms, and second-order effects. Call the tool.`;
+Research relocation hubs (with coordinates, supplier ecosystems, and cost indices), customs-relief mechanisms, and second-order effects. Call the tool.`;
 
   const response = await ctx.anthropic.messages.create({
     model,
     max_tokens: MAX_OUTPUT_TOKENS,
     system: SYSTEM_PROMPT,
-    tools: [{ name: TOOL_NAME, description: "Report the sourcing & relief analysis", input_schema: TOOL_SCHEMA }],
+    tools: [{ name: TOOL_NAME, description: "Report the sourcing & relief dossier", input_schema: TOOL_SCHEMA }],
     tool_choice: { type: "tool", name: TOOL_NAME },
     messages: [{ role: "user", content: user }],
   });
@@ -163,7 +189,6 @@ Analyze relocation options, customs-relief mechanisms, and second-order effects.
   const parsed = SourcingIntelOutput.safeParse(toolUse.input);
   if (!parsed.success) throw new Error(`sourcing-intel: validation failed: ${parsed.error.message}`);
 
-  // Ground every relocation option with real duty math.
   const current = await calculateDuty(ctx, {
     hts_code: input.hts_code_8,
     country_of_origin: input.current_country_iso2,
@@ -171,35 +196,40 @@ Analyze relocation options, customs-relief mechanisms, and second-order effects.
     transport_mode: "ocean",
     include_entry_fees: false,
   });
+  const currentLanded = input.annual_value_usd_cents + current.total_duty_usd_cents;
 
-  const priced: RelocationPriced[] = [];
-  for (const opt of parsed.data.relocation_options) {
+  const priced: PricedHub[] = [];
+  for (const o of parsed.data.relocation_options) {
+    const goods = Math.round(input.annual_value_usd_cents * (o.unit_cost_index / 100));
     let dutyCents = current.total_duty_usd_cents;
     try {
       const d = await calculateDuty(ctx, {
         hts_code: input.hts_code_8,
-        country_of_origin: opt.country_iso2,
-        customs_value_usd_cents: input.annual_value_usd_cents,
+        country_of_origin: o.country_iso2,
+        customs_value_usd_cents: goods,
         transport_mode: "ocean",
         include_entry_fees: false,
       });
       dutyCents = d.total_duty_usd_cents;
-    } catch {
-      /* keep current as fallback */
-    }
+    } catch { /* fallback */ }
+    const landed = goods + dutyCents;
     priced.push({
-      ...opt,
+      ...o,
+      annual_goods_usd_cents: goods,
       annual_duty_usd_cents: dutyCents,
+      total_landed_usd_cents: landed,
+      landed_delta_usd_cents: landed - currentLanded,
       duty_delta_usd_cents: dutyCents - current.total_duty_usd_cents,
     });
   }
-  // Best duty outcome first.
-  priced.sort((a, b) => a.duty_delta_usd_cents - b.duty_delta_usd_cents);
+  priced.sort((a, b) => a.total_landed_usd_cents - b.total_landed_usd_cents);
 
   return {
     promptVersion: SOURCING_INTEL_PROMPT_VERSION,
     input,
+    current_hub: parsed.data.current_hub,
     current_annual_duty_usd_cents: current.total_duty_usd_cents,
+    current_total_landed_usd_cents: currentLanded,
     relocation_options: priced,
     relief_mechanisms: parsed.data.relief_mechanisms,
     second_order_effects: parsed.data.second_order_effects,
