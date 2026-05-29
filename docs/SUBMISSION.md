@@ -61,4 +61,5 @@ Retrieval improvements first (the eval points there, not at the model). Then own
 | Rejected verifier experiment | `evals/verifier-eval-report.md` |
 | Headline metrics surfaced in-product | `/methodology` page, `evals/eval-summary.json` |
 | Reasonable-care audit logging | `/audit-trail` page, `audit_log` table |
+| Automated tests (keyless, `npm test`) | `tests/` — 22 tests over duty/fee math, rate resolution, streaming decoder, SKU memory, portal |
 | AI-usage disclosure, sources, decisions | `README.md`, `docs/SOURCES.md`, git history |

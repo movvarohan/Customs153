@@ -192,7 +192,7 @@ export interface ClassifyTrace {
  * model emits its reasoning before everything else and the field value
  * streams cleanly without other fields interleaved.
  */
-function extractReasoningSoFar(partialJson: string): string | null {
+export function extractReasoningSoFar(partialJson: string): string | null {
   const key = '"reasoning"';
   const keyIdx = partialJson.indexOf(key);
   if (keyIdx < 0) return null;

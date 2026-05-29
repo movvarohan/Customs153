@@ -84,6 +84,14 @@ Full detail and the live view are on the **Methodology** page and in [`evals/`](
 
 Run it yourself: `npm run eval:classifier` writes a timestamped report to `evals/reports/`.
 
+### Automated tests
+
+```bash
+npm test        # 22 tests, ~1s, no API keys or index required
+```
+
+[`tests/`](./tests) covers the deterministic core that the money and live-UI correctness depend on: the duty calculator's MPF clamping and HMF ocean-only logic and the **entry-level fee-cancellation property** the refund math relies on (`duty-fees.test.ts`); Section 301 / 232 / base-rate resolution (`tariff-rates.test.ts`); the streaming partial-JSON reasoning decoder that powers the live view (`classifier-stream.test.ts`); the per-importer SKU-memory learning loop against an in-memory database (`sku-memory.test.ts`); and the ACE portal replica (`mock-portal.test.ts`). They run keyless so anyone cloning the repo can verify the logic without the Anthropic/Voyage keys or the embedding index.
+
 ---
 
 ## Setup
