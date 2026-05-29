@@ -1,25 +1,31 @@
 // Sourcing & customs-relief intelligence — the second-order-effects agent.
 //
-// Tariffs move factories and trigger customs-relief strategy. For a product
-// this agent researches:
-//   1. Named manufacturing HUBS the product could relocate to (city + region
-//      + example supplier ecosystem), with coordinates so they plot on a map.
-//   2. The full LANDED-COST picture per hub: a unit-cost index vs China, the
-//      resulting annual goods cost, the REAL duty (re-run through the
-//      deterministic calculator on the adjusted customs value), and total
-//      landed cost + delta — plus lead time, ramp, MOQ.
-//   3. Customs-relief mechanisms (FTA, first-sale, drawback, FTZ, 301
-//      exclusions) and second-order effects.
-// The LLM supplies the research and the cost indices; the duty figures are
-// real math.
+// This agent RESEARCHES rather than recalls. It runs an agentic loop with:
+//   - web_search (Anthropic server tool): live research for named factories,
+//     manufacturing ecosystems, freight/shipping availability, and export
+//     capacity, returning real citations.
+//   - world_bank_country_profile (our tool): keyless World Bank macro data
+//     (GDP/capita as a labor-cost proxy, manufacturing % of GDP, labor-force
+//     size) to ground labor-cost and capacity claims in real numbers.
+//   - report_sourcing_intel (structured output): the final dossier.
+//
+// For each candidate relocation hub it then prices the full LANDED-COST
+// picture through the REAL deterministic duty calculator (goods cost adjusted
+// by the researched unit-cost index, then real duty on that customs value).
+//
+// The LLM supplies researched judgement; the duty figures and the macro data
+// are real, and every run carries its web + World Bank citations.
 
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { AppContext } from "@/core/app-context";
 import { calculateDuty } from "./duty-calculator";
+import { fetchCountryProfile, summarizeProfile } from "@/core/lib/research/world-bank";
 
-export const SOURCING_INTEL_PROMPT_VERSION = "v2-2026-05-29";
-const MAX_OUTPUT_TOKENS = 4096;
+export const SOURCING_INTEL_PROMPT_VERSION = "v3-research-2026-05-29";
+const MAX_OUTPUT_TOKENS = 8000;
+const MAX_ROUNDS = 6;
+const MAX_WEB_SEARCHES = 6;
 
 const Hub = z.object({
   country_iso2: z.string().regex(/^[A-Z]{2}$/),
@@ -32,10 +38,13 @@ const Hub = z.object({
   rationale: z.string().min(10),
   example_suppliers: z.array(z.string()).min(1).max(6),
   unit_cost_index: z.number().min(40).max(300), // China = 100
+  avg_labor_cost_note: z.string().min(4),
+  manufacturing_availability: z.enum(["high", "medium", "low"]),
   ramp_time_months: z.number().min(0).max(48),
   lead_time_note: z.string(),
   moq_note: z.string(),
 });
+type HubT = z.infer<typeof Hub>;
 
 export const SourcingIntelOutput = z.object({
   current_hub: z.object({ city: z.string(), region: z.string(), lat: z.number(), lng: z.number() }),
@@ -49,8 +58,10 @@ export const SourcingIntelOutput = z.object({
 });
 export type SourcingIntelOutputT = z.infer<typeof SourcingIntelOutput>;
 
-const TOOL_NAME = "report_sourcing_intel";
-const TOOL_SCHEMA = {
+const REPORT_TOOL = "report_sourcing_intel";
+const WORLD_BANK_TOOL = "world_bank_country_profile";
+
+const REPORT_SCHEMA = {
   type: "object" as const,
   properties: {
     current_hub: {
@@ -68,19 +79,21 @@ const TOOL_SCHEMA = {
         properties: {
           country_iso2: { type: "string", pattern: "^[A-Z]{2}$" },
           country_name: { type: "string" },
-          hub_city: { type: "string", description: "A real manufacturing city/cluster for this product category, e.g. Bắc Ninh, Chennai, Monterrey" },
+          hub_city: { type: "string", description: "A real manufacturing city/cluster for this product category (from your research)" },
           hub_region: { type: "string", description: "The industrial corridor / what it's known for" },
           lat: { type: "number" },
           lng: { type: "number" },
           feasibility: { type: "string", enum: ["high", "medium", "low"] },
           rationale: { type: "string" },
-          example_suppliers: { type: "array", items: { type: "string" }, description: "Named contract manufacturers / OEM types operating there for this product category (research)" },
-          unit_cost_index: { type: "number", description: "Per-unit ex-works cost relative to China=100 (e.g. 108 = 8% more expensive, 92 = 8% cheaper)" },
-          ramp_time_months: { type: "number", description: "Realistic months to qualify a supplier and reach volume" },
-          lead_time_note: { type: "string", description: "Ocean transit / lead-time change vs China" },
-          moq_note: { type: "string", description: "Minimum-order-quantity implications during ramp" },
+          example_suppliers: { type: "array", items: { type: "string" }, description: "Named contract manufacturers / OEMs operating there for this product category — prefer names you found via web search" },
+          unit_cost_index: { type: "number", description: "Per-unit ex-works cost relative to China=100" },
+          avg_labor_cost_note: { type: "string", description: "Labor cost grounded in the World Bank data you pulled, e.g. 'GDP/capita $4,300; manufacturing wages ~$250-350/mo'" },
+          manufacturing_availability: { type: "string", enum: ["high", "medium", "low"], description: "Capacity/ecosystem availability for THIS product category, informed by labor-force size, manufacturing share, and what your searches found" },
+          ramp_time_months: { type: "number" },
+          lead_time_note: { type: "string", description: "Ocean transit / lead-time + freight availability vs China" },
+          moq_note: { type: "string" },
         },
-        required: ["country_iso2", "country_name", "hub_city", "hub_region", "lat", "lng", "feasibility", "rationale", "example_suppliers", "unit_cost_index", "ramp_time_months", "lead_time_note", "moq_note"],
+        required: ["country_iso2", "country_name", "hub_city", "hub_region", "lat", "lng", "feasibility", "rationale", "example_suppliers", "unit_cost_index", "avg_labor_cost_note", "manufacturing_availability", "ramp_time_months", "lead_time_note", "moq_note"],
       },
     },
     relief_mechanisms: {
@@ -109,19 +122,29 @@ const TOOL_SCHEMA = {
   required: ["current_hub", "relocation_options", "relief_mechanisms", "second_order_effects", "summary"],
 };
 
-const SYSTEM_PROMPT = `You are a trade-strategy and supply-chain advisor for a US importer responding to tariffs. For the given product, do the research a sourcing consultant would and produce a relocation + customs-relief dossier.
+const WORLD_BANK_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    country_iso2: { type: "string", description: "ISO-2 country code, e.g. VN, IN, MX, TH, MY, BD" },
+  },
+  required: ["country_iso2"],
+};
 
-current_hub: name the city/region where this product is most likely made today in its current country of origin, with approximate lat/lng.
+const SYSTEM_PROMPT = `You are a trade-strategy and supply-chain research analyst for a US importer responding to tariffs. Produce a relocation + customs-relief dossier for the given product, backed by RESEARCH, not memory.
 
-relocation_options (3–5, ranked by feasibility): for each, name a REAL manufacturing city/cluster that actually makes this product category — be specific (e.g. electronics: Bắc Ninh / Bac Giang Vietnam, Chennai / Sri City India, Monterrey Mexico, Penang Malaysia; apparel: Dhaka Bangladesh, Hanoi Vietnam, Tiruppur India; furniture: Binh Duong Vietnam). Give approximate lat/lng for the city. List example_suppliers — named contract manufacturers or the OEM ecosystem operating there for this category (e.g. "Luxshare, GoerTek (audio EMS)", "Foxconn Chennai", "regional cut-and-sew clusters"). Give a unit_cost_index relative to China=100 reflecting realistic ex-works cost (most low-cost countries are within 90–120; Mexico/Eastern Europe higher; some cheaper), ramp_time_months, a lead_time_note, and a moq_note. feasibility reflects ecosystem maturity and ramp risk, not the duty.
+Process:
+1. Use web_search to find where this specific product category is actually manufactured outside China — name real cities/clusters and real contract manufacturers/OEMs operating there. Search for current freight/shipping availability and lead times from those hubs to the US.
+2. For each serious candidate country, call ${WORLD_BANK_TOOL} to get real labor-cost and manufacturing-capacity data (GDP/capita, manufacturing % of GDP, labor-force size). Use it to set avg_labor_cost_note and manufacturing_availability honestly.
+3. When research is done, call ${REPORT_TOOL} exactly once with the full dossier.
 
-relief_mechanisms: FTA/USMCA preference, first-sale valuation, duty drawback, Foreign-Trade Zones, Section 301 exclusions, Section 321 — each with applicability (likely/possible/unlikely), a concrete how, and est_savings_pct (rough % of the duty bill, or null).
+Guidance:
+- current_hub: where this product is most likely made today in its current country of origin, with approximate lat/lng.
+- relocation_options (3–5, ranked by feasibility): real city + region + lat/lng, named example_suppliers, a unit_cost_index vs China=100 (most low-cost countries 90–120), avg_labor_cost_note grounded in the World Bank numbers, manufacturing_availability for THIS category, ramp_time_months, a lead_time_note covering shipping availability, and a moq_note.
+- relief_mechanisms: FTA/USMCA preference, first-sale valuation, duty drawback, Foreign-Trade Zones, Section 301 exclusions, Section 321 — each with applicability, a concrete how, and est_savings_pct.
+- second_order_effects: lead-time/MOQ, supplier ramp/quality, tariff stacking, substantial-transformation origin rules, working capital.
+- summary: 2–3 sentences a CFO can act on.
 
-second_order_effects: lead-time/MOQ, supplier ramp/quality, tariff stacking, substantial-transformation origin rules, reshoring incentives, working capital.
-
-summary: 2–3 sentences a CFO can act on.
-
-Be rigorous and specific — name real places and real supplier ecosystems. Do NOT suggest transshipment/origin-faking or invent FTAs. Call report_sourcing_intel.`;
+Be rigorous and specific. Do NOT suggest transshipment/origin-faking or invent FTAs. Prefer facts you found via search; if a search is inconclusive, say so in the rationale rather than inventing specifics.`;
 
 export interface SourcingIntelInput {
   description: string;
@@ -130,20 +153,7 @@ export interface SourcingIntelInput {
   annual_value_usd_cents: number;
 }
 
-export interface PricedHub {
-  country_iso2: string;
-  country_name: string;
-  hub_city: string;
-  hub_region: string;
-  lat: number;
-  lng: number;
-  feasibility: "high" | "medium" | "low";
-  rationale: string;
-  example_suppliers: string[];
-  unit_cost_index: number;
-  ramp_time_months: number;
-  lead_time_note: string;
-  moq_note: string;
+export interface PricedHub extends HubT {
   /** annual goods cost = current value × unit_cost_index/100 */
   annual_goods_usd_cents: number;
   /** real duty on the adjusted customs value */
@@ -153,6 +163,11 @@ export interface PricedHub {
   /** total landed vs current total landed (negative = cheaper) */
   landed_delta_usd_cents: number;
   duty_delta_usd_cents: number;
+}
+
+export interface SourceCitation {
+  title: string;
+  url: string;
 }
 
 export interface SourcingIntelResult {
@@ -165,6 +180,31 @@ export interface SourcingIntelResult {
   relief_mechanisms: SourcingIntelOutputT["relief_mechanisms"];
   second_order_effects: SourcingIntelOutputT["second_order_effects"];
   summary: string;
+  /** Web + World Bank citations gathered during research. */
+  sources: SourceCitation[];
+  /** How many live web searches and World Bank lookups the agent ran. */
+  research: { web_searches: number; world_bank_lookups: number };
+}
+
+// The web_search server tool isn't in the installed SDK's typed tool union,
+// so it's declared as a raw object and cast at the call boundary.
+const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: MAX_WEB_SEARCHES } as unknown as Anthropic.Messages.ToolUnion;
+
+/** Pull {title,url} citations out of web_search_tool_result blocks (not in the SDK types). */
+function extractCitations(content: unknown[]): { cites: SourceCitation[]; searches: number } {
+  const cites: SourceCitation[] = [];
+  let searches = 0;
+  for (const b of content) {
+    const blk = b as { type?: string; content?: unknown };
+    if (blk.type === "server_tool_use") searches += 1;
+    if (blk.type === "web_search_tool_result" && Array.isArray(blk.content)) {
+      for (const r of blk.content) {
+        const item = r as { url?: string; title?: string };
+        if (item.url) cites.push({ title: (item.title ?? item.url).slice(0, 160), url: item.url });
+      }
+    }
+  }
+  return { cites, searches };
 }
 
 export async function analyzeSourcing(ctx: AppContext, input: SourcingIntelInput): Promise<SourcingIntelResult> {
@@ -174,21 +214,71 @@ HTS (8-digit): ${input.hts_code_8}
 Current country of origin: ${input.current_country_iso2}
 Annual import value (customs value): $${(input.annual_value_usd_cents / 100).toLocaleString()}
 
-Research relocation hubs (with coordinates, supplier ecosystems, and cost indices), customs-relief mechanisms, and second-order effects. Call the tool.`;
+Research relocation hubs (named factories, freight availability), pull World Bank labor/capacity data for the candidate countries, then call ${REPORT_TOOL}.`;
 
-  const response = await ctx.anthropic.messages.create({
-    model,
-    max_tokens: MAX_OUTPUT_TOKENS,
-    system: SYSTEM_PROMPT,
-    tools: [{ name: TOOL_NAME, description: "Report the sourcing & relief dossier", input_schema: TOOL_SCHEMA }],
-    tool_choice: { type: "tool", name: TOOL_NAME },
-    messages: [{ role: "user", content: user }],
-  });
-  const toolUse = response.content.find((b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use");
-  if (!toolUse) throw new Error("sourcing-intel: no tool_use block");
-  const parsed = SourcingIntelOutput.safeParse(toolUse.input);
-  if (!parsed.success) throw new Error(`sourcing-intel: validation failed: ${parsed.error.message}`);
+  const messages: Anthropic.Messages.MessageParam[] = [{ role: "user", content: user }];
+  const tools: Anthropic.Messages.ToolUnion[] = [
+    WEB_SEARCH_TOOL,
+    { name: WORLD_BANK_TOOL, description: "Real World Bank macro data for a country: GDP per capita (labor-cost proxy), manufacturing % of GDP, and labor-force size.", input_schema: WORLD_BANK_SCHEMA },
+    { name: REPORT_TOOL, description: "Report the final sourcing & relief dossier.", input_schema: REPORT_SCHEMA },
+  ];
 
+  const allCites: SourceCitation[] = [];
+  const wbSources: SourceCitation[] = [];
+  let webSearchCount = 0;
+  let worldBankCount = 0;
+  let parsedReport: SourcingIntelOutputT | null = null;
+
+  for (let round = 0; round < MAX_ROUNDS && !parsedReport; round++) {
+    const forceReport = round === MAX_ROUNDS - 1;
+    const response = await ctx.anthropic.messages.create({
+      model,
+      max_tokens: MAX_OUTPUT_TOKENS,
+      system: SYSTEM_PROMPT,
+      tools,
+      tool_choice: forceReport ? { type: "tool", name: REPORT_TOOL } : { type: "auto" },
+      messages,
+    });
+
+    const { cites, searches } = extractCitations(response.content as unknown[]);
+    allCites.push(...cites);
+    webSearchCount += searches;
+
+    const toolUses = response.content.filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use");
+    const report = toolUses.find((t) => t.name === REPORT_TOOL);
+    if (report) {
+      const parsed = SourcingIntelOutput.safeParse(report.input);
+      if (!parsed.success) throw new Error(`sourcing-intel: validation failed: ${parsed.error.message}`);
+      parsedReport = parsed.data;
+      break;
+    }
+
+    messages.push({ role: "assistant", content: response.content });
+
+    const wbCalls = toolUses.filter((t) => t.name === WORLD_BANK_TOOL);
+    if (wbCalls.length > 0) {
+      const results: Anthropic.Messages.ToolResultBlockParam[] = [];
+      for (const tu of wbCalls) {
+        worldBankCount += 1;
+        const iso = String((tu.input as { country_iso2?: string }).country_iso2 ?? "").toUpperCase();
+        try {
+          const profile = await fetchCountryProfile(iso);
+          wbSources.push({ title: `World Bank indicators — ${profile.country_name ?? iso}`, url: profile.source_url });
+          results.push({ type: "tool_result", tool_use_id: tu.id, content: summarizeProfile(profile) });
+        } catch (e) {
+          results.push({ type: "tool_result", tool_use_id: tu.id, content: `World Bank lookup failed: ${e instanceof Error ? e.message : String(e)}`, is_error: true });
+        }
+      }
+      messages.push({ role: "user", content: results });
+    } else {
+      // Model searched/talked but didn't call a client tool or report — nudge it forward.
+      messages.push({ role: "user", content: `Continue your research if needed, then call ${REPORT_TOOL} with the dossier.` });
+    }
+  }
+
+  if (!parsedReport) throw new Error("sourcing-intel: no report produced");
+
+  // Price each hub through the real deterministic duty calculator.
   const current = await calculateDuty(ctx, {
     hts_code: input.hts_code_8,
     country_of_origin: input.current_country_iso2,
@@ -199,7 +289,7 @@ Research relocation hubs (with coordinates, supplier ecosystems, and cost indice
   const currentLanded = input.annual_value_usd_cents + current.total_duty_usd_cents;
 
   const priced: PricedHub[] = [];
-  for (const o of parsed.data.relocation_options) {
+  for (const o of parsedReport.relocation_options) {
     const goods = Math.round(input.annual_value_usd_cents * (o.unit_cost_index / 100));
     let dutyCents = current.total_duty_usd_cents;
     try {
@@ -211,7 +301,7 @@ Research relocation hubs (with coordinates, supplier ecosystems, and cost indice
         include_entry_fees: false,
       });
       dutyCents = d.total_duty_usd_cents;
-    } catch { /* fallback */ }
+    } catch { /* fallback to current duty */ }
     const landed = goods + dutyCents;
     priced.push({
       ...o,
@@ -224,15 +314,27 @@ Research relocation hubs (with coordinates, supplier ecosystems, and cost indice
   }
   priced.sort((a, b) => a.total_landed_usd_cents - b.total_landed_usd_cents);
 
+  // De-dupe citations by URL; web results first, then World Bank sources.
+  const seen = new Set<string>();
+  const sources: SourceCitation[] = [];
+  for (const c of [...allCites, ...wbSources]) {
+    if (seen.has(c.url)) continue;
+    seen.add(c.url);
+    sources.push(c);
+    if (sources.length >= 14) break;
+  }
+
   return {
     promptVersion: SOURCING_INTEL_PROMPT_VERSION,
     input,
-    current_hub: parsed.data.current_hub,
+    current_hub: parsedReport.current_hub,
     current_annual_duty_usd_cents: current.total_duty_usd_cents,
     current_total_landed_usd_cents: currentLanded,
     relocation_options: priced,
-    relief_mechanisms: parsed.data.relief_mechanisms,
-    second_order_effects: parsed.data.second_order_effects,
-    summary: parsed.data.summary,
+    relief_mechanisms: parsedReport.relief_mechanisms,
+    second_order_effects: parsedReport.second_order_effects,
+    summary: parsedReport.summary,
+    sources,
+    research: { web_searches: webSearchCount, world_bank_lookups: worldBankCount },
   };
 }

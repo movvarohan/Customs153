@@ -30,6 +30,8 @@ interface Reloc {
   rationale: string;
   example_suppliers: string[];
   unit_cost_index: number;
+  avg_labor_cost_note: string;
+  manufacturing_availability: "high" | "medium" | "low";
   ramp_time_months: number;
   lead_time_note: string;
   moq_note: string;
@@ -47,6 +49,8 @@ interface Intel {
   relief_mechanisms: { mechanism: string; applicability: "likely" | "possible" | "unlikely"; how: string; est_savings_pct: number | null }[];
   second_order_effects: { factor: string; note: string }[];
   summary: string;
+  sources: { title: string; url: string }[];
+  research: { web_searches: number; world_bank_lookups: number };
 }
 
 export default function CatalogPage() {
@@ -190,6 +194,17 @@ function IntelView({ intel }: { intel: Intel }) {
     <div className="space-y-5 text-xs">
       <p className="text-sm text-navy">{intel.summary}</p>
 
+      {/* Research provenance */}
+      {intel.research && (intel.research.web_searches > 0 || intel.research.world_bank_lookups > 0) && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-accent/30 bg-accent-50/30 px-3 py-2">
+          <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">Live research</span>
+          <span className="text-[11px] text-navy">
+            {intel.research.web_searches} web search{intel.research.web_searches === 1 ? "" : "es"} · {intel.research.world_bank_lookups} World Bank lookup{intel.research.world_bank_lookups === 1 ? "" : "s"}
+          </span>
+          <span className="text-[11px] text-muted">— labor &amp; capacity figures pulled from World Bank; factories &amp; freight researched live and cited below.</span>
+        </div>
+      )}
+
       {/* Map */}
       <div>
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted">Relocation map — researched manufacturing hubs</div>
@@ -260,7 +275,19 @@ function IntelView({ intel }: { intel: Intel }) {
                 </div>
                 <span className="text-[10px] text-muted">ramp ~{o.ramp_time_months} mo</span>
               </div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted">{o.hub_region}</div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-muted">
+                <span>{o.hub_region}</span>
+                <span className="normal-case tracking-normal">·</span>
+                <span className="normal-case tracking-normal">
+                  capacity:{" "}
+                  <span className={classNames("font-semibold",
+                    o.manufacturing_availability === "high" && "text-accent-700",
+                    o.manufacturing_availability === "medium" && "text-navy",
+                    o.manufacturing_availability === "low" && "text-amber-700")}>
+                    {o.manufacturing_availability}
+                  </span>
+                </span>
+              </div>
               <p className="mt-1 text-muted">{o.rationale}</p>
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {o.example_suppliers.map((sup, k) => (
@@ -268,6 +295,7 @@ function IntelView({ intel }: { intel: Intel }) {
                 ))}
               </div>
               <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px] text-muted">
+                <div className="col-span-2"><span className="text-navy">Labor:</span> {o.avg_labor_cost_note}</div>
                 <div><span className="text-navy">Lead time:</span> {o.lead_time_note}</div>
                 <div><span className="text-navy">MOQ:</span> {o.moq_note}</div>
               </div>
@@ -311,6 +339,25 @@ function IntelView({ intel }: { intel: Intel }) {
           </ul>
         </div>
       </div>
+
+      {/* Sources */}
+      {intel.sources && intel.sources.length > 0 && (
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted">Sources ({intel.sources.length})</div>
+          <div className="flex flex-wrap gap-1.5">
+            {intel.sources.map((s, i) => {
+              let host = s.url;
+              try { host = new URL(s.url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
+              return (
+                <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" title={s.title}
+                  className="max-w-[14rem] truncate rounded-full border border-cardline bg-white px-2 py-0.5 text-[10px] text-accent-700 transition hover:border-accent/40 hover:bg-accent-50">
+                  {host}
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
