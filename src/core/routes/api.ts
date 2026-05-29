@@ -30,6 +30,15 @@ import { generateAuditDefense } from "@/core/agents/audit-defense";
 import { verifyAgainstCross } from "@/core/agents/cross-verifier";
 import { runDebate } from "@/core/agents/debate";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
+import {
+  MOCK_ENTRIES,
+  isValidLogin,
+  loadEntryPdf,
+  renderDashboard,
+  renderEntries,
+  renderLogin,
+} from "@/core/lib/mock-ace-portal";
+import { runAceBrowserAgent } from "@/core/agents/ace-browser-agent";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
 import { withRetry } from "@/core/lib/retry";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
@@ -696,6 +705,67 @@ apiRoute.get("/regulatory-watch", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
+});
+
+// ── Mock ACE Importer Portal ─────────────────────────────────────────
+// Real HTML pages the demo browser agent navigates. In production the
+// agent points at the live ACE portal; these endpoints exist so the
+// pattern is demonstrable end-to-end on localhost.
+apiRoute.get("/mock-ace/login", (c) => {
+  c.header("content-type", "text/html; charset=utf-8");
+  return c.body(renderLogin());
+});
+apiRoute.post("/mock-ace/login", async (c) => {
+  const form = await c.req.formData();
+  const username = form.get("username")?.toString() ?? null;
+  const password = form.get("password")?.toString() ?? null;
+  if (!isValidLogin(username, password)) {
+    c.header("content-type", "text/html; charset=utf-8");
+    return c.body(renderLogin("Invalid email or password."));
+  }
+  return c.redirect("/api/mock-ace/dashboard");
+});
+apiRoute.get("/mock-ace/dashboard", (c) => {
+  c.header("content-type", "text/html; charset=utf-8");
+  return c.body(renderDashboard());
+});
+apiRoute.get("/mock-ace/entries", (c) => {
+  c.header("content-type", "text/html; charset=utf-8");
+  return c.body(renderEntries());
+});
+apiRoute.get("/mock-ace/entry/:idx/pdf", async (c) => {
+  const idx = Number.parseInt(c.req.param("idx") ?? "", 10);
+  const bytes = await loadEntryPdf(idx);
+  if (!bytes) return c.json({ error: "no such entry" }, 404);
+  const meta = MOCK_ENTRIES[idx]!;
+  c.header("content-type", "application/pdf");
+  c.header("content-disposition", `attachment; filename="${meta.number}.pdf"`);
+  return c.body(bytes as unknown as ArrayBuffer);
+});
+
+// ── POST /api/ace-agent ──────────────────────────────────────────────
+// Drives the (mock) ACE portal end-to-end with a real Playwright browser.
+// Streams step events (with screenshots) as NDJSON. Saves downloaded PDFs
+// to /tmp and lists their paths in the stream so the caller can hand off
+// to /api/find-refunds.
+apiRoute.post("/ace-agent", async (c) => {
+  return stream(c, async (s) => {
+    c.header("content-type", "application/x-ndjson");
+    const emit = async (obj: unknown) => {
+      await s.write(JSON.stringify(obj) + "\n");
+    };
+    const base = `${new URL(c.req.url).origin}/api/mock-ace`;
+    try {
+      await runAceBrowserAgent({
+        portal_base_url: base,
+        username: "demo@acme-fba.com",
+        password: "demo",
+        onEvent: emit,
+      });
+    } catch (e) {
+      await emit({ type: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  });
 });
 
 apiRoute.post("/counterfactual", async (c) => {

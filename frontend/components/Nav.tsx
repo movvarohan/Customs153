@@ -9,6 +9,7 @@ const ITEMS: Array<{ href: string; label: string }> = [
   { href: "/find-refunds", label: "Find refunds" },
   { href: "/broker", label: "Broker queue" },
   { href: "/regulatory", label: "Reg watch" },
+  { href: "/audit-broker", label: "Audit broker" },
   { href: "/", label: "About" },
 ];
 
