@@ -73,6 +73,26 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Why now */}
+      <section>
+        <h2 className="mb-2 text-2xl font-bold text-navy">Why now</h2>
+        <p className="mb-6 max-w-2xl text-muted">
+          Tariff complexity exploded in 2025–2026 and the people who untangle it don&apos;t scale.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[
+            { stat: "42%", label: "of CBP penalties stem from HTS misclassification" },
+            { stat: "~14,500", label: "licensed customs brokers serving millions of importers" },
+            { stat: "5–15%", label: "of duties paid is a typical recoverable-overpayment finding" },
+          ].map((x) => (
+            <div key={x.stat} className="rounded-card border border-cardline bg-white p-5 shadow-card">
+              <div className="text-3xl font-bold tabular-nums text-accent">{x.stat}</div>
+              <div className="mt-1 text-sm leading-snug text-muted">{x.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* How it works */}
       <section>
         <h2 className="mb-2 text-2xl font-bold text-navy">How it works</h2>
