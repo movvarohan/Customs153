@@ -698,6 +698,8 @@ function LineDetail({
 
       <CrossVerifyPanel description={description} classification={classification} />
 
+      <DebatePanel description={description} classification={classification} />
+
       <div className="text-[10px] italic text-muted">
         Source line: <span className="text-navy">{description}</span>
       </div>
@@ -998,6 +1000,151 @@ function AuditDefensePanel({
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface DebateData {
+  advocate: { defended_hts_code: string; argument: string; strongest_pillar: string };
+  challenger: { alternative_hts_code: string; attack: string; why_alternative_wins: string };
+  judge: { winner: "advocate" | "challenger" | "split"; final_hts_code: string; final_confidence: "low" | "medium" | "high"; rationale: string; citations: string[] };
+  revised: boolean;
+}
+
+function DebatePanel({
+  description,
+  classification,
+}: {
+  description: string;
+  classification: LineClassification;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [data, setData] = useState<DebateData | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/debate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          description,
+          predicted_hts_code: classification.hts_code,
+          predicted_hts_code_8: classification.hts_code_8,
+          classifier_reasoning: classification.reasoning,
+          classifier_citations: classification.citations,
+          alternative_codes_considered: classification.alternative_codes_considered,
+        }),
+      });
+      if (!r.ok) {
+        setErr(`backend ${r.status}: ${await r.text()}`);
+        return;
+      }
+      setData((await r.json()) as DebateData);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [description, classification]);
+
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+        Adversarial debate
+      </div>
+      {!data && (
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            onClick={run}
+            disabled={busy}
+            className="rounded-md border border-navy/30 bg-white px-3.5 py-1.5 text-xs font-semibold text-navy shadow-sm transition hover:bg-navy-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Running debate…" : "Run advocate vs. challenger"}
+          </button>
+          <span className="text-[11px] text-muted">
+            Two agents argue, a third judges. Transcript preserved.
+          </span>
+        </div>
+      )}
+      {err && (
+        <div className="mt-2 rounded-md border border-warn/40 bg-white px-3 py-2 text-xs text-warn">{err}</div>
+      )}
+      {data && (
+        <div className="mt-2 space-y-2 text-xs">
+          <div className="rounded-md border border-accent/30 bg-accent-50/40 p-3">
+            <div className="mb-1 flex items-baseline justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-accent-700">
+                Advocate
+              </div>
+              <span className="rounded bg-accent-50 px-1.5 py-0.5 font-mono text-accent-700">
+                {data.advocate.defended_hts_code}
+              </span>
+            </div>
+            <p className="text-navy">{data.advocate.argument}</p>
+            <p className="mt-1 text-[11px] italic text-muted">
+              Strongest pillar: {data.advocate.strongest_pillar}
+            </p>
+          </div>
+          <div className="rounded-md border border-amber/40 bg-amber-50/50 p-3">
+            <div className="mb-1 flex items-baseline justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-amber-700">
+                Challenger
+              </div>
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-800">
+                {data.challenger.alternative_hts_code}
+              </span>
+            </div>
+            <p className="text-navy">{data.challenger.attack}</p>
+            <p className="mt-1 text-[11px] italic text-muted">
+              Why alternative wins: {data.challenger.why_alternative_wins}
+            </p>
+          </div>
+          <div className="rounded-md border border-cardline bg-navy-50 p-3">
+            <div className="mb-1 flex items-baseline justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Judge ruling
+              </div>
+              <span
+                className={classNames(
+                  "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                  data.judge.winner === "advocate" && "bg-accent text-white",
+                  data.judge.winner === "challenger" && "bg-amber-200 text-amber-900",
+                  data.judge.winner === "split" && "bg-cardline text-muted",
+                )}
+              >
+                {data.judge.winner} wins
+              </span>
+            </div>
+            <div className="mb-1 flex items-baseline gap-3">
+              <span className="rounded bg-white px-1.5 py-0.5 font-mono text-navy">
+                {data.judge.final_hts_code}
+              </span>
+              <span className="text-[10px] uppercase tracking-wider text-muted">
+                confidence: {data.judge.final_confidence}
+              </span>
+              {data.revised && (
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-warn">
+                  classifier revised
+                </span>
+              )}
+            </div>
+            <p className="text-navy">{data.judge.rationale}</p>
+            {data.judge.citations.length > 0 && (
+              <div className="mt-1.5 text-[11px] text-muted">
+                Cites:{" "}
+                {data.judge.citations.map((c, i) => (
+                  <span key={i} className="mr-1.5 inline-block rounded bg-white px-1.5 py-0.5 font-mono">
+                    {c}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

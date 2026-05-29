@@ -28,6 +28,7 @@ import { ensureDemoCustomer, listSkuMemory, upsertSkuMemory } from "@/core/lib/s
 import { generateCounterfactuals } from "@/core/agents/counterfactual";
 import { generateAuditDefense } from "@/core/agents/audit-defense";
 import { verifyAgainstCross } from "@/core/agents/cross-verifier";
+import { runDebate } from "@/core/agents/debate";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
 import { withRetry } from "@/core/lib/retry";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
@@ -648,6 +649,33 @@ apiRoute.post("/cross-verify", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
   try {
     const result = await verifyAgainstCross(ctx, parsed.data);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+// ── POST /api/debate ──────────────────────────────────────────────────
+// Adversarial broker debate. Advocate / challenger / judge agents in
+// sequence; transcript returned.
+const DebateBody = z.object({
+  description: z.string().min(1),
+  predicted_hts_code: z.string().regex(/^\d{4}\.\d{2}\.\d{2}\.\d{2}$/),
+  predicted_hts_code_8: z.string().regex(/^\d{4}\.\d{2}\.\d{2}$/),
+  classifier_reasoning: z.string(),
+  classifier_citations: z.array(z.string()),
+  alternative_codes_considered: z.array(
+    z.object({ hts_code: z.string(), rejected_because: z.string() }),
+  ),
+});
+apiRoute.post("/debate", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = DebateBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  try {
+    const result = await runDebate(ctx, parsed.data);
     return c.json(result);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
