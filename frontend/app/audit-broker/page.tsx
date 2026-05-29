@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
 
 interface StepEvent {
-  type: "step" | "downloaded" | "done" | "error" | "refund_status" | "refund_line" | "refund_done";
+  type: "step" | "downloaded" | "done" | "error" | "notice" | "refund_status" | "refund_line" | "refund_done";
   index?: number;
   action?: string;
   narration?: string;
   screenshot_b64?: string;
+  portal_path?: string;
+  simulated?: boolean;
   filename?: string;
   bytes?: number;
   path?: string;
@@ -34,6 +36,8 @@ export default function AuditBrokerPage() {
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<StepEvent[]>([]);
   const [latestShot, setLatestShot] = useState<string | null>(null);
+  const [portalPath, setPortalPath] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [refundStatus, setRefundStatus] = useState<string | null>(null);
   const [refundProgress, setRefundProgress] = useState<{ done: number; total: number; recoverable: number }>({ done: 0, total: 0, recoverable: 0 });
@@ -48,6 +52,8 @@ export default function AuditBrokerPage() {
     setRunning(true);
     setEvents([]);
     setLatestShot(null);
+    setPortalPath(null);
+    setNotice(null);
     setErr(null);
     setRefundStatus(null);
     setRefundProgress({ done: 0, total: 0, recoverable: 0 });
@@ -62,9 +68,11 @@ export default function AuditBrokerPage() {
         if (ev.type === "step" || ev.type === "downloaded" || ev.type === "done") {
           setEvents((prev) => [...prev, ev]);
         }
-        if (ev.type === "step" && ev.screenshot_b64) {
-          setLatestShot(ev.screenshot_b64);
+        if (ev.type === "step") {
+          if (ev.screenshot_b64) setLatestShot(ev.screenshot_b64);
+          if (ev.portal_path) setPortalPath(ev.portal_path);
         }
+        if (ev.type === "notice") setNotice(ev.message ?? null);
         if (ev.type === "refund_status") {
           setRefundStatus(ev.message ?? null);
           if (typeof ev.total_lines === "number") {
@@ -132,6 +140,9 @@ export default function AuditBrokerPage() {
       {err && (
         <div className="rounded-md border border-warn/40 bg-white px-3 py-2 text-sm text-warn">{err}</div>
       )}
+      {notice && (
+        <div className="rounded-md border border-cardline bg-navy-50 px-3 py-2 text-[11px] text-muted">{notice}</div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-[1.4fr_1fr]">
         {/* Live screenshot */}
@@ -147,9 +158,15 @@ export default function AuditBrokerPage() {
               src={`data:image/png;base64,${latestShot}`}
               className="w-full rounded border border-cardline"
             />
+          ) : portalPath ? (
+            <iframe
+              title="ACE Importer Portal"
+              src={`${API_BASE_URL}${portalPath}`}
+              className="h-[460px] w-full rounded border border-cardline bg-white"
+            />
           ) : (
             <div className="flex h-64 items-center justify-center rounded border border-dashed border-cardline text-xs text-muted">
-              Click "Audit my broker" to launch the agent.
+              Click &quot;Audit my broker&quot; to launch the agent.
             </div>
           )}
         </div>
