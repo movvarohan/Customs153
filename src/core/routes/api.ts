@@ -25,6 +25,7 @@ import { parseEntrySummary } from "@/core/agents/entry-summary-parser";
 import { findRefundOpportunities } from "@/core/agents/psc-finder";
 import { renderRefundReportToBuffer } from "@/core/lib/render-refund-pdf";
 import { ensureDemoCustomer, listSkuMemory, upsertSkuMemory } from "@/core/lib/sku-memory";
+import { generateCounterfactuals } from "@/core/agents/counterfactual";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
 import { withRetry } from "@/core/lib/retry";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
@@ -581,5 +582,31 @@ async function handleBrokerCorrect(c: import("hono").Context<HonoEnv>) {
 }
 apiRoute.post("/broker/confirm", handleBrokerCorrect);
 apiRoute.post("/broker/correct", handleBrokerCorrect);
+
+// ── POST /api/counterfactual ────────────────────────────────────────────
+// Given a classified line, propose tariff-engineering alternatives with
+// their duty calc'd deterministically. Body:
+//   { description, filed_hts_code_8, filed_country_iso2,
+//     customs_value_usd_cents, filed_total_duty_usd_cents }
+const CounterfactualBody = z.object({
+  description: z.string().min(1),
+  filed_hts_code_8: z.string().regex(/^\d{4}\.\d{2}\.\d{2}$/),
+  filed_country_iso2: z.string().regex(/^[A-Z]{2}$/),
+  customs_value_usd_cents: z.number().int().nonnegative(),
+  filed_total_duty_usd_cents: z.number().int().nonnegative(),
+});
+apiRoute.post("/counterfactual", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = CounterfactualBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  try {
+    const result = await generateCounterfactuals(ctx, parsed.data);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
 
 void z; // keep zod import even if no top-level uses inside this file

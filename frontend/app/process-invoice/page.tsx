@@ -524,6 +524,14 @@ export default function ProcessInvoicePage() {
                                         ? `${fmtMoney(Math.round(li.total_value * extraction.fx_rate_used))} (USD, converted from ${fmtMoney(li.total_value, extraction.currency)} at FX ${extraction.fx_rate_used.toFixed(4)})`
                                         : `${fmtMoney(li.total_value, extraction.currency)} — no FX rate available`
                                   }
+                                  countryIso2={st.duty?.country_of_origin ?? null}
+                                  lineUsdCents={
+                                    extraction.currency === "USD"
+                                      ? li.total_value
+                                      : extraction.fx_rate_used !== null
+                                        ? Math.round(li.total_value * extraction.fx_rate_used)
+                                        : null
+                                  }
                                 />
                               </td>
                             </tr>
@@ -556,12 +564,16 @@ function LineDetail({
   duty,
   dutyError,
   customsValueLabel,
+  countryIso2,
+  lineUsdCents,
 }: {
   description: string;
   classification: LineClassification;
   duty: DutyCalculation | null;
   dutyError: string | null;
   customsValueLabel: string;
+  countryIso2: string | null;
+  lineUsdCents: number | null;
 }) {
   return (
     <div className="space-y-5">
@@ -668,9 +680,190 @@ function LineDetail({
         )}
       </div>
 
+      {duty && countryIso2 && lineUsdCents !== null && (
+        <CounterfactualPanel
+          description={description}
+          htsCode8={classification.hts_code_8}
+          countryIso2={countryIso2}
+          customsValueUsdCents={lineUsdCents}
+          filedTotalDutyUsdCents={duty.total_duty_usd_cents}
+        />
+      )}
+
       <div className="text-[10px] italic text-muted">
         Source line: <span className="text-navy">{description}</span>
       </div>
+    </div>
+  );
+}
+
+interface CounterfactualScenario {
+  label: string;
+  kind: "country_of_origin" | "material" | "structural" | "fta_preference" | "other";
+  what_changes: string;
+  alternative_hts_8: string | null;
+  alternative_country_iso2: string | null;
+  reasoning: string;
+  operational_notes: string;
+  scenario_total_duty_usd_cents: number;
+  savings_usd_cents: number;
+  savings_pct: number;
+  warnings: string[];
+}
+
+function CounterfactualPanel({
+  description,
+  htsCode8,
+  countryIso2,
+  customsValueUsdCents,
+  filedTotalDutyUsdCents,
+}: {
+  description: string;
+  htsCode8: string;
+  countryIso2: string;
+  customsValueUsdCents: number;
+  filedTotalDutyUsdCents: number;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [scenarios, setScenarios] = useState<CounterfactualScenario[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/counterfactual`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          description,
+          filed_hts_code_8: htsCode8,
+          filed_country_iso2: countryIso2,
+          customs_value_usd_cents: customsValueUsdCents,
+          filed_total_duty_usd_cents: filedTotalDutyUsdCents,
+        }),
+      });
+      if (!r.ok) {
+        setErr(`backend ${r.status}: ${await r.text()}`);
+        return;
+      }
+      const j = (await r.json()) as { scenarios: CounterfactualScenario[] };
+      setScenarios(j.scenarios);
+      setOpen(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [description, htsCode8, countryIso2, customsValueUsdCents, filedTotalDutyUsdCents]);
+
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+        Tariff engineering — what if?
+      </div>
+      {!scenarios && (
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            onClick={run}
+            disabled={busy}
+            className="rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Generating…" : "Show 3–5 alternative scenarios"}
+          </button>
+          <span className="text-[11px] text-muted">
+            Country / material / structural changes the importer could make to reduce duty legally.
+          </span>
+        </div>
+      )}
+      {err && (
+        <div className="mt-2 rounded-md border border-warn/40 bg-white px-3 py-2 text-xs text-warn">
+          {err}
+        </div>
+      )}
+      {open && scenarios && scenarios.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {scenarios.map((s, i) => {
+            const savings = s.savings_usd_cents;
+            const positive = savings > 0;
+            return (
+              <div
+                key={i}
+                className={classNames(
+                  "rounded-md border bg-white p-3 text-xs",
+                  positive ? "border-accent/40" : "border-cardline",
+                )}
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div>
+                    <span
+                      className={classNames(
+                        "mr-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                        s.kind === "country_of_origin" && "bg-amber-100 text-amber-800",
+                        s.kind === "material" && "bg-navy-100 text-navy",
+                        s.kind === "structural" && "bg-accent-50 text-accent-700",
+                        s.kind === "fta_preference" && "bg-accent text-white",
+                        s.kind === "other" && "bg-cardline text-muted",
+                      )}
+                    >
+                      {s.kind.replace("_", " ")}
+                    </span>
+                    <span className="font-semibold text-navy">{s.label}</span>
+                  </div>
+                  <div className="text-right">
+                    <div
+                      className={classNames(
+                        "text-base font-bold tabular-nums",
+                        positive ? "text-accent-700" : "text-muted",
+                      )}
+                    >
+                      {positive ? "− " : ""}
+                      {fmtMoney(Math.abs(savings))}
+                    </div>
+                    <div className="text-[10px] text-muted">
+                      {positive ? "savings" : "no savings"} ({s.savings_pct.toFixed(0)}%)
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-navy">{s.what_changes}</p>
+                <div className="mt-1.5 flex flex-wrap items-baseline gap-3 text-[11px] text-muted">
+                  <span>
+                    HTS:{" "}
+                    <span className="font-mono text-navy">
+                      {s.alternative_hts_8 ?? htsCode8}
+                      {!s.alternative_hts_8 && " (unchanged)"}
+                    </span>
+                  </span>
+                  <span>
+                    Country:{" "}
+                    <span className="font-mono text-navy">
+                      {s.alternative_country_iso2 ?? countryIso2}
+                      {!s.alternative_country_iso2 && " (unchanged)"}
+                    </span>
+                  </span>
+                  <span>
+                    New duty:{" "}
+                    <span className="font-mono text-navy">
+                      {fmtMoney(s.scenario_total_duty_usd_cents)}
+                    </span>
+                  </span>
+                </div>
+                <p className="mt-1.5 italic text-muted">{s.reasoning}</p>
+                <p className="mt-1 text-[11px] text-muted">
+                  <span className="font-semibold text-navy">Operational:</span>{" "}
+                  {s.operational_notes}
+                </p>
+                {s.warnings.length > 0 && (
+                  <div className="mt-1.5 rounded border border-amber/30 bg-amber-50 px-2 py-1 text-[10px] text-amber-700">
+                    {s.warnings.join("; ")}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
