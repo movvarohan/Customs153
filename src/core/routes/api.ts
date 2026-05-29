@@ -26,6 +26,7 @@ import { findRefundOpportunities } from "@/core/agents/psc-finder";
 import { renderRefundReportToBuffer } from "@/core/lib/render-refund-pdf";
 import { ensureDemoCustomer, listSkuMemory, upsertSkuMemory } from "@/core/lib/sku-memory";
 import { generateCounterfactuals } from "@/core/agents/counterfactual";
+import { generateAuditDefense } from "@/core/agents/audit-defense";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
 import { withRetry } from "@/core/lib/retry";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
@@ -595,6 +596,39 @@ const CounterfactualBody = z.object({
   customs_value_usd_cents: z.number().int().nonnegative(),
   filed_total_duty_usd_cents: z.number().int().nonnegative(),
 });
+// ── POST /api/audit-defense ──────────────────────────────────────────────
+// Generate a simulated CBP focused-assessment Q&A packet for a single
+// classification or refund opportunity.
+const AuditDefenseBody = z.object({
+  description: z.string().min(1),
+  hts_code: z.string().regex(/^\d{4}\.\d{2}\.\d{2}\.\d{2}$/),
+  hts_code_8: z.string().regex(/^\d{4}\.\d{2}\.\d{2}$/),
+  gri_rule_applied: z.string(),
+  reasoning: z.string(),
+  citations: z.array(z.string()),
+  alternative_codes_considered: z.array(
+    z.object({ hts_code: z.string(), rejected_because: z.string() }),
+  ),
+  missing_inputs_for_precision: z.array(z.string()),
+  confidence: z.enum(["low", "medium", "high"]),
+  country_of_origin: z.string().optional(),
+  filed_hts_code_8: z.string().optional(),
+  recoverable_usd_cents: z.number().int().optional(),
+});
+apiRoute.post("/audit-defense", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = AuditDefenseBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  try {
+    const result = await generateAuditDefense(ctx, parsed.data);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
 apiRoute.post("/counterfactual", async (c) => {
   const ctx = c.var.ctx;
   let body: unknown;
