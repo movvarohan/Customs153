@@ -167,6 +167,66 @@ export interface ClassifyTrace {
  * heading appears among them. Returns null if consistent, else a warning
  * string. Heuristic only — never blocks the classification.
  */
+/**
+ * Best-effort extraction of the in-flight "reasoning" field value from a
+ * partial JSON buffer streamed by Anthropic's tool_use input_json_delta
+ * events. Returns the JSON-decoded prefix of reasoning's string value (no
+ * trailing close-quote yet) or null if the field hasn't started.
+ *
+ * The TOOL_INPUT_SCHEMA orders properties with `reasoning` first, so the
+ * model emits its reasoning before everything else and the field value
+ * streams cleanly without other fields interleaved.
+ */
+function extractReasoningSoFar(partialJson: string): string | null {
+  const key = '"reasoning"';
+  const keyIdx = partialJson.indexOf(key);
+  if (keyIdx < 0) return null;
+  // Find the opening quote of the value after the colon.
+  let i = keyIdx + key.length;
+  while (i < partialJson.length && partialJson[i] !== '"') {
+    if (partialJson[i] !== ' ' && partialJson[i] !== ':' && partialJson[i] !== '\t' && partialJson[i] !== '\n') {
+      // Non-string value (unexpected for reasoning). Bail.
+      return null;
+    }
+    i++;
+  }
+  if (i >= partialJson.length) return null;
+  i++; // skip opening quote
+  // Walk through escapes; collect decoded chars until end-of-buffer or unescaped close-quote.
+  let out = "";
+  while (i < partialJson.length) {
+    const ch = partialJson[i];
+    if (ch === "\\") {
+      if (i + 1 >= partialJson.length) break; // incomplete escape — wait
+      const esc = partialJson[i + 1];
+      switch (esc) {
+        case '"': out += '"'; break;
+        case "\\": out += "\\"; break;
+        case "/": out += "/"; break;
+        case "n": out += "\n"; break;
+        case "r": out += "\r"; break;
+        case "t": out += "\t"; break;
+        case "b": out += "\b"; break;
+        case "f": out += "\f"; break;
+        case "u":
+          if (i + 6 > partialJson.length) return out; // incomplete \uXXXX
+          out += String.fromCharCode(parseInt(partialJson.slice(i + 2, i + 6), 16));
+          i += 4;
+          break;
+        default: out += esc;
+      }
+      i += 2;
+    } else if (ch === '"') {
+      // End of reasoning string.
+      return out;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
+
 function checkReasoningConsistency(reasoning: string, predictedHtsCode: string): string | null {
   const codeRe = /\b\d{4}(?:\.\d{2}){0,3}\b/g;
   const mentioned = new Set<string>();
@@ -183,9 +243,23 @@ function checkReasoningConsistency(reasoning: string, predictedHtsCode: string):
   return `predicted hts_code ${predictedHtsCode} (heading ${predictedHeading}) does not appear in reasoning; reasoning mentions: ${[...mentioned].slice(0, 8).join(", ")}`;
 }
 
+export interface ClassifyOptions {
+  /**
+   * Fired as the model streams the reasoning text. Each delta is the
+   * NEW characters appended to the reasoning field since the previous
+   * call. When set, the classifier uses Anthropic's streaming API and
+   * parses the tool_use input JSON incrementally — `reasoning` is the
+   * first field in the tool schema so its value streams first.
+   * Errors thrown from the callback are caught and logged; they never
+   * abort the classification.
+   */
+  onReasoningDelta?: (delta: string) => void | Promise<void>;
+}
+
 export async function classify(
   ctx: AppContext,
   input: LineItemDescription,
+  options: ClassifyOptions = {},
 ): Promise<{ result: ClassificationResultT; trace: ClassifyTrace }> {
   const classificationId = randomUUID();
   const model = ctx.config.defaultModel;
@@ -237,7 +311,7 @@ export async function classify(
         : userMessage +
           "\n\nIMPORTANT: your previous response failed validation. Cite ONLY HTS codes that appear verbatim in the candidate list above; the hts_code field must also be one of those candidates.";
 
-    const response = await ctx.anthropic.messages.create({
+    const createParams = {
       model,
       max_tokens: MAX_OUTPUT_TOKENS,
       system: CLASSIFIER_SYSTEM_PROMPT,
@@ -248,9 +322,41 @@ export async function classify(
           input_schema: TOOL_INPUT_SCHEMA,
         },
       ],
-      tool_choice: { type: "tool", name: TOOL_NAME },
-      messages: [{ role: "user", content: reminderMessage }],
-    });
+      tool_choice: { type: "tool" as const, name: TOOL_NAME },
+      messages: [{ role: "user" as const, content: reminderMessage }],
+    };
+
+    let response: Anthropic.Messages.Message;
+    if (options.onReasoningDelta) {
+      // Stream so we can fire reasoning_delta callbacks token-by-token.
+      // tool_use's JSON streams in field order; reasoning is property #1
+      // in TOOL_INPUT_SCHEMA so its value streams first.
+      const stream = ctx.anthropic.messages.stream(createParams);
+      let partialJson = "";
+      let lastEmittedLen = 0;
+      for await (const event of stream) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta.type === "input_json_delta"
+        ) {
+          partialJson += event.delta.partial_json;
+          const next = extractReasoningSoFar(partialJson);
+          if (next !== null && next.length > lastEmittedLen) {
+            const delta = next.slice(lastEmittedLen);
+            lastEmittedLen = next.length;
+            try {
+              await options.onReasoningDelta(delta);
+            } catch (e) {
+              // Caller's callback errored — log and continue. Don't abort the classify.
+              console.warn(`[classifier] onReasoningDelta threw: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }
+        }
+      }
+      response = await stream.finalMessage();
+    } else {
+      response = await ctx.anthropic.messages.create(createParams);
+    }
 
     const toolUse = response.content.find(
       (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",

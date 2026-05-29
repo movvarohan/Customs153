@@ -200,12 +200,24 @@ apiRoute.post("/process-invoice", async (c) => {
           try {
             const { result: classification } = await withRetry(
               () =>
-                classify(ctx, {
-                  description: t.line.description,
-                  quantity: t.line.quantity,
-                  unit_value_usd: t.line.unit_value / 100,
-                  ...(t.country_of_origin ? { country_of_origin: t.country_of_origin } : {}),
-                }),
+                classify(
+                  ctx,
+                  {
+                    description: t.line.description,
+                    quantity: t.line.quantity,
+                    unit_value_usd: t.line.unit_value / 100,
+                    ...(t.country_of_origin ? { country_of_origin: t.country_of_origin } : {}),
+                  },
+                  {
+                    onReasoningDelta: async (delta) => {
+                      await emit({
+                        type: "reasoning_delta",
+                        line_index: t.line_index,
+                        delta,
+                      });
+                    },
+                  },
+                ),
               { attempts: 3, baseMs: 2000 },
             );
             const classifyMs = Date.now() - tStart;

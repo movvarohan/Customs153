@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 
@@ -72,9 +72,9 @@ interface ExtractedShipment {
 }
 
 type LineState =
-  | { status: "pending" }
-  | { status: "classified"; classification: LineClassification; duty: DutyCalculation | null; dutyError: string | null }
-  | { status: "failed"; error: string };
+  | { status: "pending"; reasoning_so_far?: string }
+  | { status: "classified"; classification: LineClassification; duty: DutyCalculation | null; dutyError: string | null; reasoning_so_far?: string }
+  | { status: "failed"; error: string; reasoning_so_far?: string };
 
 export default function ProcessInvoicePage() {
   const [files, setFiles] = useState<File[]>([]);
@@ -161,13 +161,30 @@ export default function ProcessInvoicePage() {
           setExtraction(ex);
           setSourceFilenames((evt.source_filenames as string[]) ?? []);
           setLineStates(ex.line_items.map(() => ({ status: "pending" }) as LineState));
+        } else if (evt.type === "reasoning_delta") {
+          // Live token stream from the classifier as it reasons through GRI.
+          const idx = evt.line_index as number;
+          const delta = String(evt.delta ?? "");
+          setLineStates((prev) => {
+            const next = [...prev];
+            const cur = next[idx];
+            if (cur) next[idx] = { ...cur, reasoning_so_far: (cur.reasoning_so_far ?? "") + delta };
+            return next;
+          });
         } else if (evt.type === "line_classified") {
           const idx = evt.line_index as number;
           const cl = evt.classification as LineClassification;
           setStatusMessage(`Classified line ${idx + 1}…`);
           setLineStates((prev) => {
             const next = [...prev];
-            next[idx] = { status: "classified", classification: cl, duty: null, dutyError: null };
+            const reasoning_so_far = next[idx]?.reasoning_so_far;
+            next[idx] = {
+              status: "classified",
+              classification: cl,
+              duty: null,
+              dutyError: null,
+              ...(reasoning_so_far ? { reasoning_so_far } : {}),
+            };
             return next;
           });
         } else if (evt.type === "line_duty_calculated") {
@@ -433,6 +450,9 @@ export default function ProcessInvoicePage() {
                               {li.material_composition && (
                                 <div className="mt-0.5 text-[11px] text-muted">{li.material_composition}</div>
                               )}
+                              {st.status === "pending" && st.reasoning_so_far && (
+                                <ReasoningStream text={st.reasoning_so_far} live />
+                              )}
                               {missing.length > 0 && (
                                 <div className="mt-2 rounded-md border border-amber/30 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
                                   <div className="font-semibold">
@@ -653,6 +673,52 @@ function LineDetail({
       </div>
     </div>
   );
+}
+
+/** Live token-stream from the classifier. Auto-scrolls. Highlights HTS codes. */
+function ReasoningStream({ text, live }: { text: string; live?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [text]);
+  return (
+    <div className="mt-2 rounded-md border border-accent/30 bg-accent-50/40 px-2.5 py-2">
+      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-accent-700">
+        {live && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden />}
+        Agent reasoning {live ? "(live)" : ""}
+      </div>
+      <div
+        ref={ref}
+        className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-snug text-navy"
+      >
+        {highlightHts(text)}
+        {live && <span className="inline-block w-1.5 h-3 ml-px bg-accent/80 align-middle animate-pulse" aria-hidden />}
+      </div>
+    </div>
+  );
+}
+
+/** Wrap HTS-code-shaped tokens (XXXX, XXXX.XX, XXXX.XX.XX, XXXX.XX.XX.XX) in a highlight. */
+function highlightHts(text: string): React.ReactNode {
+  const re = /\b(\d{4}(?:\.\d{2}){0,3})\b/g;
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let i = 0;
+  for (const m of text.matchAll(re)) {
+    const start = m.index ?? 0;
+    if (start > last) out.push(text.slice(last, start));
+    out.push(
+      <span
+        key={`hts-${i++}`}
+        className="rounded bg-accent/20 px-1 py-0.5 font-semibold text-accent-700"
+      >
+        {m[1]}
+      </span>,
+    );
+    last = start + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }
 
 function componentLabel(kind: DutyComponent["kind"]): string {
