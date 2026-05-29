@@ -696,6 +696,8 @@ function LineDetail({
         countryIso2={countryIso2}
       />
 
+      <CrossVerifyPanel description={description} classification={classification} />
+
       <div className="text-[10px] italic text-muted">
         Source line: <span className="text-navy">{description}</span>
       </div>
@@ -996,6 +998,122 @@ function AuditDefensePanel({
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CrossVerifyData {
+  defense: {
+    agrees_with_predicted: boolean;
+    suggested_hts_code: string | null;
+    confidence: "low" | "medium" | "high";
+    reasoning: string;
+    evidence: Array<{ ruling_number: string; product: string; assigned_code: string; relevance: string }>;
+  };
+}
+
+function CrossVerifyPanel({
+  description,
+  classification,
+}: {
+  description: string;
+  classification: LineClassification;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [data, setData] = useState<CrossVerifyData | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/cross-verify`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          description,
+          predicted_hts_code: classification.hts_code,
+          predicted_hts_code_8: classification.hts_code_8,
+        }),
+      });
+      if (!r.ok) {
+        setErr(`backend ${r.status}: ${await r.text()}`);
+        return;
+      }
+      setData((await r.json()) as CrossVerifyData);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [description, classification]);
+
+  const d = data?.defense;
+
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+        CROSS rulings cross-check
+      </div>
+      {!data && (
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            onClick={run}
+            disabled={busy}
+            className="rounded-md border border-accent/40 bg-white px-3.5 py-1.5 text-xs font-semibold text-accent-700 shadow-sm transition hover:bg-accent-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Querying CBP CROSS…" : "Check against CBP binding rulings"}
+          </button>
+          <span className="text-[11px] text-muted">
+            Fetches actual rulings from <code className="rounded bg-navy-50 px-1">rulings.cbp.gov</code> and asks Claude whether the
+            prediction aligns with CBP practice.
+          </span>
+        </div>
+      )}
+      {err && (
+        <div className="mt-2 rounded-md border border-warn/40 bg-white px-3 py-2 text-xs text-warn">{err}</div>
+      )}
+      {d && (
+        <div className="mt-2 space-y-2 rounded-md border border-cardline bg-white p-3 text-xs">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <span
+              className={classNames(
+                "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                d.agrees_with_predicted ? "bg-accent text-white" : "bg-warn/20 text-warn",
+              )}
+            >
+              {d.agrees_with_predicted ? "Aligns with CBP practice" : "CBP practice disagrees"}
+            </span>
+            <span className="text-[10px] uppercase tracking-wider text-muted">
+              confidence: {d.confidence}
+            </span>
+            {!d.agrees_with_predicted && d.suggested_hts_code && (
+              <span className="text-[11px]">
+                CROSS supports:{" "}
+                <span className="rounded bg-accent-50 px-1.5 py-0.5 font-mono text-accent-700">
+                  {d.suggested_hts_code}
+                </span>
+              </span>
+            )}
+          </div>
+          <p className="text-navy">{d.reasoning}</p>
+          {d.evidence.length > 0 && (
+            <div className="mt-1 space-y-1">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Rulings relied on
+              </div>
+              {d.evidence.map((e, i) => (
+                <div key={i} className="flex items-baseline gap-2 text-[11px] text-muted">
+                  <span className="font-mono text-navy">{e.ruling_number}</span>
+                  <span className="font-mono text-accent-700">{e.assigned_code}</span>
+                  <span className="truncate">{e.product}</span>
+                  <span className="italic">— {e.relevance}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

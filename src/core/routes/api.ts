@@ -27,6 +27,7 @@ import { renderRefundReportToBuffer } from "@/core/lib/render-refund-pdf";
 import { ensureDemoCustomer, listSkuMemory, upsertSkuMemory } from "@/core/lib/sku-memory";
 import { generateCounterfactuals } from "@/core/agents/counterfactual";
 import { generateAuditDefense } from "@/core/agents/audit-defense";
+import { verifyAgainstCross } from "@/core/agents/cross-verifier";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
 import { withRetry } from "@/core/lib/retry";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
@@ -623,6 +624,30 @@ apiRoute.post("/audit-defense", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
   try {
     const result = await generateAuditDefense(ctx, parsed.data);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+// ── POST /api/cross-verify ───────────────────────────────────────────────
+// Queries the actual CBP CROSS rulings database and asks Claude whether
+// the predicted code aligns with how CBP has classified materially
+// similar articles. Different from /api/audit-defense (which uses only
+// the classifier's own trace) — this brings new external information.
+const CrossVerifyBody = z.object({
+  description: z.string().min(1),
+  predicted_hts_code: z.string().regex(/^\d{4}\.\d{2}\.\d{2}\.\d{2}$/),
+  predicted_hts_code_8: z.string().regex(/^\d{4}\.\d{2}\.\d{2}$/),
+});
+apiRoute.post("/cross-verify", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = CrossVerifyBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  try {
+    const result = await verifyAgainstCross(ctx, parsed.data);
     return c.json(result);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
