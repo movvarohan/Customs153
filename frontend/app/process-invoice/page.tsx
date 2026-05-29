@@ -71,10 +71,12 @@ interface ExtractedShipment {
   reconciliation_warning: string | null;
 }
 
+interface RetrievalCandidate { hts_code: string; score: number; description: string; cited: boolean }
+
 type LineState =
-  | { status: "pending"; reasoning_so_far?: string }
-  | { status: "classified"; classification: LineClassification; duty: DutyCalculation | null; dutyError: string | null; reasoning_so_far?: string }
-  | { status: "failed"; error: string; reasoning_so_far?: string };
+  | { status: "pending"; reasoning_so_far?: string; candidates?: RetrievalCandidate[] }
+  | { status: "classified"; classification: LineClassification; duty: DutyCalculation | null; dutyError: string | null; reasoning_so_far?: string; candidates?: RetrievalCandidate[] }
+  | { status: "failed"; error: string; reasoning_so_far?: string; candidates?: RetrievalCandidate[] };
 
 export default function ProcessInvoicePage() {
   const [files, setFiles] = useState<File[]>([]);
@@ -190,6 +192,16 @@ export default function ProcessInvoicePage() {
             if (cur) next[idx] = { ...cur, reasoning_so_far: (cur.reasoning_so_far ?? "") + delta };
             return next;
           });
+        } else if (evt.type === "line_retrieval") {
+          // The candidates the classifier retrieved + which it cited.
+          const idx = evt.line_index as number;
+          const candidates = evt.candidates as RetrievalCandidate[];
+          setLineStates((prev) => {
+            const next = [...prev];
+            const cur = next[idx];
+            if (cur) next[idx] = { ...cur, candidates };
+            return next;
+          });
         } else if (evt.type === "line_classified") {
           const idx = evt.line_index as number;
           const cl = evt.classification as LineClassification;
@@ -197,12 +209,14 @@ export default function ProcessInvoicePage() {
           setLineStates((prev) => {
             const next = [...prev];
             const reasoning_so_far = next[idx]?.reasoning_so_far;
+            const candidates = next[idx]?.candidates;
             next[idx] = {
               status: "classified",
               classification: cl,
               duty: null,
               dutyError: null,
               ...(reasoning_so_far ? { reasoning_so_far } : {}),
+              ...(candidates ? { candidates } : {}),
             };
             return next;
           });
@@ -556,6 +570,7 @@ export default function ProcessInvoicePage() {
                                         : `${fmtMoney(li.total_value, extraction.currency)} — no FX rate available`
                                   }
                                   countryIso2={st.duty?.country_of_origin ?? null}
+                                  candidates={st.candidates ?? null}
                                   lineUsdCents={
                                     extraction.currency === "USD"
                                       ? li.total_value
@@ -596,6 +611,7 @@ function LineDetail({
   dutyError,
   customsValueLabel,
   countryIso2,
+  candidates,
   lineUsdCents,
 }: {
   description: string;
@@ -604,10 +620,45 @@ function LineDetail({
   dutyError: string | null;
   customsValueLabel: string;
   countryIso2: string | null;
+  candidates: RetrievalCandidate[] | null;
   lineUsdCents: number | null;
 }) {
   return (
     <div className="space-y-5">
+      {/* Retrieval: what the agent actually looked at */}
+      {candidates && candidates.length > 0 && (
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+            What the agent retrieved
+          </div>
+          <p className="mt-1 text-[11px] text-muted">
+            Top {candidates.length} of the candidate HTS lines pulled by semantic search. The agent
+            reasoned over these and cited the highlighted ones.
+          </p>
+          <div className="mt-2 space-y-1">
+            {candidates.map((cand, i) => (
+              <div
+                key={i}
+                className={classNames(
+                  "flex items-center gap-2 rounded-md border px-2 py-1 text-[11px]",
+                  cand.cited ? "border-accent/40 bg-accent-50/50" : "border-cardline/60 bg-white",
+                )}
+              >
+                <span className="w-6 shrink-0 text-right tabular-nums text-muted">{i + 1}</span>
+                <span className="w-28 shrink-0 font-mono text-navy">{cand.hts_code}</span>
+                <span className="w-12 shrink-0 tabular-nums text-muted">{cand.score.toFixed(3)}</span>
+                <span className="flex-1 truncate text-muted">{cand.description}</span>
+                {cand.cited && (
+                  <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-white">
+                    cited
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Classification reasoning */}
       <div>
         <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">Classification</div>

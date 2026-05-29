@@ -10,6 +10,8 @@ const ITEMS: Array<{ href: string; label: string }> = [
   { href: "/broker", label: "Broker queue" },
   { href: "/regulatory", label: "Reg watch" },
   { href: "/audit-broker", label: "Audit broker" },
+  { href: "/methodology", label: "Methodology" },
+  { href: "/audit-trail", label: "Audit trail" },
   { href: "/", label: "About" },
 ];
 

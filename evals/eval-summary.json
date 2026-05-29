@@ -1,0 +1,55 @@
+{
+  "_note": "Curated from the eval reports produced this development cycle. Numbers are measured, not asserted. Source reports: evals/GOLD_REVIEW.md, evals/accept-set-audit.md, evals/v3.1-to-v3.2-report.md, evals/opus-vs-sonnet-report.md, evals/retrieval-diagnostic.md, evals/verifier-eval-report.md.",
+  "gold_set": {
+    "total_cases": 100,
+    "scored_cases": 97,
+    "excluded_unverifiable": 3,
+    "sourcing": "Every gold answer is grounded in a CBP CROSS binding ruling or unambiguous HTS text. No answer is asserted from model judgment.",
+    "verification_status": { "verified": 77, "corrected": 12, "disputed": 8, "unverifiable": 3 }
+  },
+  "headline": {
+    "model": "claude-sonnet-4-5",
+    "prompt_version": "v3.2",
+    "gold": "97-case CROSS-grounded set (post-audit)",
+    "metrics": [
+      { "label": "Top-1 @ 8-digit", "value": 61.9, "n": "60/97", "target": 80 },
+      { "label": "Top-3 @ 8-digit", "value": 72.2, "n": "70/97", "target": 90 },
+      { "label": "Top-1 @ 6-digit", "value": 63.9, "n": "62/97", "target": null },
+      { "label": "Top-1 @ 10-digit", "value": 42.3, "n": "41/97", "target": null },
+      { "label": "Chapter-correct", "value": 86.6, "n": "84/97", "target": null },
+      { "label": "Citation grounding", "value": 99.0, "n": "96/97", "target": 100 }
+    ]
+  },
+  "calibration": [
+    { "bucket": "high", "n": 78, "top1_8": 72, "top3_8": 79 },
+    { "bucket": "medium", "n": 15, "top1_8": 27, "top3_8": 47 },
+    { "bucket": "low", "n": 4, "top1_8": 0, "top3_8": 25 }
+  ],
+  "prompt_evolution": [
+    { "version": "v1", "change": "Baseline GRI explanation, free-form reasoning.", "result": "~50% top-1 @ 8-digit; GRI labels collapsed to mostly '1'." },
+    { "version": "v2", "change": "Numbered decision procedure (Steps 1-4), forced verbatim chapter-note quotes, broker-relevance confidence rubric, hts_code written last.", "result": "57.5% top-1 @ 8-digit; GRI distribution diversified; high-confidence accuracy ~70%." },
+    { "version": "v3", "change": "Specificity Rule for named 8-digit lines (bamboo / electric / smartphone).", "result": "Fixed bamboo + candle-stand cases but introduced 3 smartwatch false positives (~$10K phantom recoverable)." },
+    { "version": "v3.1", "change": "Rule-precedence ordering (notes > principal function > GRI 1 > specificity > residual) with a smartwatch carve-out.", "result": "Suppressed the smartwatch FPs; refund-finder precision 47% -> 58%, recall stable." },
+    { "version": "v3.2", "change": "Honest 6-digit fallback: when the deciding attribute is absent from the description, commit to the 6-digit subheading at high confidence instead of guessing the 8-digit line. New precision_level field.", "result": "Current production prompt. 61.9% top-1 @ 8-digit on the post-audit gold; citation grounding 99%." }
+  ],
+  "model_bakeoff": {
+    "summary": "Ran the full 97-case gold and the 3 sample refund files on Opus 4.7 vs Sonnet 4.5 — same prompt, retrieval, scorer. Opus is modestly stronger but ~5x the cost and it does not crack the hard cases.",
+    "rows": [
+      { "metric": "Top-1 @ 8-digit", "sonnet": 61.9, "opus": 64.9 },
+      { "metric": "Top-3 @ 8-digit", "sonnet": 72.2, "opus": 75.3 },
+      { "metric": "Citation grounding", "sonnet": 99.0, "opus": 100.0 }
+    ],
+    "decision": "Kept Sonnet 4.5 as default. Opus rescued only 5-6 of 37 stubborn failures for ~5x cost; the next real win is retrieval, not a bigger model."
+  },
+  "retrieval_diagnostic": {
+    "summary": "For each of the 37 audit-confirmed stubborn failures, checked whether the correct code was even in the top-50 retrieved candidates.",
+    "retrieval_surfaced_it": 20,
+    "retrieval_missed_it": 17,
+    "of_surfaced_in_top10": 13,
+    "takeaway": "Roughly half the remaining errors are reasoning-bound (the answer was retrieved, the model picked wrong) and half are retrieval-bound (the correct line was never surfaced). Verifier and retrieval upgrades address near-disjoint case sets."
+  },
+  "experiments": [
+    { "name": "Same-model verifier", "outcome": "Rejected", "detail": "A second Sonnet pass re-reading the predicted line's HTS text. Rescue:break ratio was 5:5 on the gold set — net zero — so it was not shipped as an always-on step." },
+    { "name": "CROSS-grounded verifier", "outcome": "Shipped (on-demand)", "detail": "Queries the live CBP CROSS rulings database and checks the prediction against how CBP actually classified materially-similar articles. Brings new external evidence into the loop rather than a second opinion on the same context." }
+  ]
+}

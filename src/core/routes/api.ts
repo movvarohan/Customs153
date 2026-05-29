@@ -126,6 +126,58 @@ apiRoute.get("/", (c) =>
   }),
 );
 
+// ── GET /api/methodology ─────────────────────────────────────────────────
+// Serves the committed eval summary (measured accuracy, prompt evolution,
+// model bake-off, retrieval diagnostic). Powers the Methodology page.
+apiRoute.get("/methodology", async (c) => {
+  try {
+    const text = await fs.readFile(path.resolve(process.cwd(), "evals/eval-summary.json"), "utf8");
+    c.header("content-type", "application/json");
+    return c.body(text);
+  } catch {
+    return c.json({ error: "eval summary not available" }, 404);
+  }
+});
+
+// ── GET /api/audit-log ───────────────────────────────────────────────────
+// Recent classification audit records — the reasonable-care binder. Each
+// row carries the model + prompt version, the predicted code, GRI rule,
+// confidence, citations, and timestamp.
+apiRoute.get("/audit-log", async (c) => {
+  const ctx = c.var.ctx;
+  const limit = Math.min(Number(c.req.query("limit") ?? "40") || 40, 100);
+  const rows = await ctx.db
+    .prepare(
+      "SELECT id, occurred_at, actor, entity_kind, action, payload_json FROM audit_log WHERE entity_kind = 'classification' ORDER BY occurred_at DESC LIMIT ?",
+    )
+    .bind(limit)
+    .all<{ id: string; occurred_at: string; actor: string; entity_kind: string; action: string; payload_json: string }>();
+  const records = rows.map((r) => {
+    let parsed: Record<string, unknown> = {};
+    try { parsed = JSON.parse(r.payload_json) as Record<string, unknown>; } catch { /* keep empty */ }
+    const result = (parsed.result ?? {}) as Record<string, unknown>;
+    const candidates = (parsed.candidates ?? []) as Array<{ htsCode: string; score: number }>;
+    return {
+      id: r.id,
+      occurred_at: r.occurred_at,
+      actor: r.actor,
+      model: parsed.model ?? null,
+      prompt_version: parsed.promptVersion ?? null,
+      hts_code: result.hts_code ?? null,
+      hts_code_8: result.hts_code_8 ?? null,
+      gri_rule_applied: result.gri_rule_applied ?? null,
+      confidence: result.confidence ?? null,
+      precision_level: result.precision_level ?? null,
+      citations: (result.citations ?? []) as string[],
+      validation_warning: result.validation_warning ?? null,
+      candidate_count: candidates.length,
+      top_candidate: candidates[0]?.htsCode ?? null,
+      reasoning: result.reasoning ?? null,
+    };
+  });
+  return c.json({ count: records.length, records });
+});
+
 // ── Sample shipment files ────────────────────────────────────────────────
 // One-click loading for the two primary surfaces: the frontend fetches
 // these, wraps them in a File, and runs the normal pipeline — so a single
@@ -263,6 +315,19 @@ apiRoute.post("/process-invoice", async (c) => {
                 ),
               { attempts: 3, baseMs: 2000 },
             );
+            // Live retrieval reveal: the top candidates the classifier saw,
+            // and which it cited.
+            await emit({
+              type: "line_retrieval",
+              line_index: t.line_index,
+              candidates: classifyTrace.candidates.slice(0, 12).map((cand) => ({
+                hts_code: cand.htsCode,
+                score: cand.score,
+                description: cand.description,
+                cited: classification.citations.some((cit) => cand.htsCode.startsWith(cit)),
+              })),
+              total_candidates: classifyTrace.candidates.length,
+            });
             if (classifyTrace.sku_memory_hit) {
               await emit({
                 type: "sku_memory_hit",
