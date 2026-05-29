@@ -2,8 +2,11 @@
 // emit one JSON object per newline; readNDJSON yields each one as soon
 // as it's flushed.
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
+// Empty string => same-origin relative requests ("/api/..."). next.config
+// rewrites proxy /api/* to the backend, so the browser only ever talks to
+// the frontend origin and a single forwarded port runs everything. Set
+// NEXT_PUBLIC_API_BASE_URL to hit a backend directly instead.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 /**
  * Read a fetch Response body as a stream of NDJSON objects. Yields each
