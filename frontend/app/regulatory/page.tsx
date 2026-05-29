@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE_URL, classNames } from "@/lib/api";
+import { API_BASE_URL, classNames, fmtMoney } from "@/lib/api";
 
 interface ImpactDoc {
   document_number: string;
@@ -19,6 +19,8 @@ interface ImpactDoc {
     broker_summary: string;
   } | null;
   impact_error?: string;
+  tracked?: boolean;
+  estimated_impact_usd_cents?: number;
   affected_skus: Array<{ description: string; hts_code: string; hts_code_8: string; source: "agent" | "broker" }>;
 }
 
@@ -80,106 +82,151 @@ export default function RegulatoryPage() {
         <div className="rounded-md border border-warn/40 bg-white px-3 py-2 text-sm text-warn">{err}</div>
       )}
 
-      {data && (
-        <div className="space-y-4">
-          {data.documents.map((d) => {
-            const i = d.impact;
-            const flagged = d.affected_skus.length > 0;
-            return (
-              <div
-                key={d.document_number}
-                className={classNames(
-                  "rounded-card border p-4 shadow-card",
-                  flagged ? "border-accent bg-accent-50/40" : "border-cardline bg-white",
-                )}
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="text-[11px] uppercase tracking-widest text-muted">
-                    {d.publication_date} · {d.agencies.join(" / ") || "—"} · {d.document_number}
+      {data && (() => {
+        const tracked = data.documents.filter((d) => d.tracked);
+        const live = data.documents.filter((d) => !d.tracked);
+        const affectedCount = tracked.filter((d) => d.affected_skus.length > 0).length;
+        const totalExposure = tracked.reduce((a, d) => a + (d.estimated_impact_usd_cents ?? 0), 0);
+        return (
+          <div className="space-y-8">
+            {/* Headline: what's affecting this importer right now */}
+            {tracked.length > 0 && (
+              <section>
+                <div className="mb-3 rounded-card border border-accent bg-navy-50 p-5">
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    Active alerts affecting your SKUs
                   </div>
-                  {i && (
-                    <span
-                      className={classNames(
-                        "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                        i.direction === "duty_up" && "bg-warn/20 text-warn",
-                        i.direction === "duty_down" && "bg-accent text-white",
-                        i.direction === "neutral" && "bg-cardline text-muted",
-                        i.direction === "uncertain" && "bg-amber-100 text-amber-800",
-                      )}
-                    >
-                      {i.direction.replace("_", " ")}
+                  <div className="mt-1 flex flex-wrap items-baseline gap-3">
+                    <span className="text-4xl font-bold tabular-nums text-accent">
+                      {fmtMoney(totalExposure)}
                     </span>
-                  )}
+                    <span className="text-xs text-muted">
+                      estimated recoverable / exposure across{" "}
+                      <span className="text-navy">{affectedCount}</span> active alert
+                      {affectedCount === 1 ? "" : "s"} touching your catalog
+                    </span>
+                  </div>
                 </div>
-                <a
-                  href={d.html_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 block text-sm font-semibold text-navy hover:text-accent-700"
-                >
-                  {d.title}
-                </a>
-                {i && (
-                  <p className="mt-1.5 text-xs text-navy">{i.broker_summary}</p>
-                )}
-                {!i && d.impact_error && (
-                  <p className="mt-1.5 text-[11px] italic text-warn">
-                    parse failed: {d.impact_error.slice(0, 160)}
-                  </p>
-                )}
-                {i && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
-                    <span className="rounded bg-navy-50 px-1.5 py-0.5 font-mono">{i.category}</span>
-                    {i.effective_date && (
-                      <span>
-                        effective <span className="text-navy">{i.effective_date}</span>
-                      </span>
-                    )}
-                    {i.affected_countries_iso2.length > 0 && (
-                      <span>
-                        countries:{" "}
-                        {i.affected_countries_iso2.map((c) => (
-                          <span key={c} className="mr-1 rounded bg-white px-1 font-mono text-navy">
-                            {c}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                    {i.affected_hts_codes_8.length > 0 && (
-                      <span>
-                        HTS:{" "}
-                        {i.affected_hts_codes_8.slice(0, 8).map((c) => (
-                          <span key={c} className="mr-1 rounded bg-white px-1 font-mono text-navy">
-                            {c}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {flagged && (
-                  <div className="mt-2 rounded-md border border-accent/40 bg-white p-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-widest text-accent-700">
-                      Affects this importer ({d.affected_skus.length} SKU{d.affected_skus.length === 1 ? "" : "s"})
-                    </div>
-                    <ul className="mt-1 space-y-0.5">
-                      {d.affected_skus.map((s, k) => (
-                        <li key={k} className="text-[11px] text-navy">
-                          <span className="mr-2 font-mono text-accent-700">{s.hts_code_8}</span>
-                          {s.description}
-                          {s.source === "broker" && (
-                            <span className="ml-2 text-[10px] uppercase tracking-wider text-muted">
-                              broker-confirmed
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                <div className="space-y-4">
+                  {tracked.map((d) => (
+                    <DocCard key={d.document_number} d={d} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Live feed */}
+            <section>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-widest text-muted">
+                Latest from the Federal Register (live)
+              </h2>
+              <div className="space-y-4">
+                {live.map((d) => (
+                  <DocCard key={d.document_number} d={d} />
+                ))}
               </div>
-            );
-          })}
+            </section>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+function DocCard({ d }: { d: ImpactDoc }) {
+  const i = d.impact;
+  const flagged = d.affected_skus.length > 0;
+  return (
+    <div
+      className={classNames(
+        "rounded-card border p-4 shadow-card",
+        flagged ? "border-accent bg-accent-50/40" : "border-cardline bg-white",
+      )}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="text-[11px] uppercase tracking-widest text-muted">
+          {d.publication_date} · {d.agencies.join(" / ") || "—"}
+          {!d.tracked && ` · ${d.document_number}`}
+        </div>
+        <div className="flex items-center gap-2">
+          {flagged && d.estimated_impact_usd_cents !== undefined && d.estimated_impact_usd_cents > 0 && (
+            <span className="rounded-full bg-accent px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
+              {fmtMoney(d.estimated_impact_usd_cents)}
+            </span>
+          )}
+          {i && (
+            <span
+              className={classNames(
+                "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                i.direction === "duty_up" && "bg-warn/20 text-warn",
+                i.direction === "duty_down" && "bg-accent text-white",
+                i.direction === "neutral" && "bg-cardline text-muted",
+                i.direction === "uncertain" && "bg-amber-100 text-amber-800",
+              )}
+            >
+              {i.direction.replace("_", " ")}
+            </span>
+          )}
+        </div>
+      </div>
+      <a
+        href={d.html_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-1 block text-sm font-semibold text-navy hover:text-accent-700"
+      >
+        {d.title}
+      </a>
+      {i && <p className="mt-1.5 text-xs text-navy">{i.broker_summary}</p>}
+      {!i && d.impact_error && (
+        <p className="mt-1.5 text-[11px] italic text-warn">parse failed: {d.impact_error.slice(0, 160)}</p>
+      )}
+      {i && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+          <span className="rounded bg-navy-50 px-1.5 py-0.5 font-mono">{i.category}</span>
+          {i.effective_date && (
+            <span>
+              effective <span className="text-navy">{i.effective_date}</span>
+            </span>
+          )}
+          {i.affected_countries_iso2.length > 0 && (
+            <span>
+              countries:{" "}
+              {i.affected_countries_iso2.map((c) => (
+                <span key={c} className="mr-1 rounded bg-white px-1 font-mono text-navy">
+                  {c}
+                </span>
+              ))}
+            </span>
+          )}
+          {i.affected_hts_codes_8.length > 0 && (
+            <span>
+              HTS:{" "}
+              {i.affected_hts_codes_8.slice(0, 8).map((c) => (
+                <span key={c} className="mr-1 rounded bg-white px-1 font-mono text-navy">
+                  {c}
+                </span>
+              ))}
+            </span>
+          )}
+        </div>
+      )}
+      {flagged && (
+        <div className="mt-2 rounded-md border border-accent/40 bg-white p-2">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-accent-700">
+            Affects this importer ({d.affected_skus.length} SKU{d.affected_skus.length === 1 ? "" : "s"})
+          </div>
+          <ul className="mt-1 space-y-0.5">
+            {d.affected_skus.map((s, k) => (
+              <li key={k} className="text-[11px] text-navy">
+                <span className="mr-2 font-mono text-accent-700">{s.hts_code_8}</span>
+                {s.description}
+                {s.source === "broker" && (
+                  <span className="ml-2 text-[10px] uppercase tracking-wider text-muted">broker-confirmed</span>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

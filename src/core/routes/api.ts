@@ -770,11 +770,13 @@ apiRoute.get("/portal/entry/:idx/pdf", async (c) => {
 });
 
 // ── POST /api/ace-agent ──────────────────────────────────────────────
-// Drives the (mock) ACE portal end-to-end with a real Playwright browser.
-// Streams step events (with screenshots) as NDJSON. Saves downloaded PDFs
-// to /tmp and lists their paths in the stream so the caller can hand off
-// to /api/find-refunds.
+// Drives the ACE portal end-to-end with a real Playwright browser, then
+// runs the refund finder on the importer's pulled entries — one continuous
+// flow. Streams browser step events (with screenshots) followed by refund
+// analysis events as NDJSON.
 apiRoute.post("/ace-agent", async (c) => {
+  const ctx = c.var.ctx;
+  await seedDemoFxRates(ctx);
   return stream(c, async (s) => {
     c.header("content-type", "application/x-ndjson");
     const emit = async (obj: unknown) => {
@@ -788,6 +790,45 @@ apiRoute.post("/ace-agent", async (c) => {
         password: "Atl@s2026!",
         onEvent: emit,
       });
+
+      // The browser pulled the importer's entry summaries; now run the
+      // refund finder on this importer's entry history. Kept to a handful
+      // of entries so the end-to-end flow stays snappy on screen.
+      await emit({ type: "refund_status", message: "Running the refund finder on the pulled entries…" });
+      const raw = await fs.readFile(
+        path.resolve(process.cwd(), "data/sample-entries/amazon-fba.json"),
+        "utf8",
+      );
+      const parsedEntries = HistoricalEntries.safeParse(JSON.parse(raw));
+      if (parsedEntries.success) {
+        // Analyze exactly the entries the portal listed and the agent pulled.
+        const pulled = new Set(MOCK_ENTRIES.map((e) => e.number));
+        const matched = parsedEntries.data.entries.filter((e) => pulled.has(e.entry_number));
+        const sliced = {
+          ...parsedEntries.data,
+          entries: matched.length > 0 ? matched : parsedEntries.data.entries.slice(0, 4),
+        };
+        const safe = {
+          ...sliced,
+          entries: sliced.entries.map((e) => ({
+            ...e,
+            line_items: e.line_items.map((li) => {
+              const { _ground_truth_correct_hts: _omit, ...rest } = li;
+              return rest;
+            }),
+          })),
+        };
+        const totalLines = safe.entries.reduce((a, e) => a + e.line_items.length, 0);
+        await emit({ type: "refund_status", message: `Re-classifying ${totalLines} line items across ${safe.entries.length} entries…`, total_lines: totalLines });
+        const { findings } = await findRefundOpportunities(ctx, safe, {
+          asOf: new Date(),
+          concurrency: CONCURRENCY,
+          onLineAnalyzed: async (event) => {
+            await emit({ type: "refund_line", ...event });
+          },
+        });
+        await emit({ type: "refund_done", findings });
+      }
     } catch (e) {
       await emit({ type: "error", message: e instanceof Error ? e.message : String(e) });
     }

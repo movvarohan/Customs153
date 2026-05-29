@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE_URL, classNames, readNDJSON } from "@/lib/api";
+import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
 
 interface StepEvent {
-  type: "step" | "downloaded" | "done" | "error";
+  type: "step" | "downloaded" | "done" | "error" | "refund_status" | "refund_line" | "refund_done";
   index?: number;
   action?: string;
   narration?: string;
@@ -15,6 +15,19 @@ interface StepEvent {
   entries_downloaded?: number;
   total_ms?: number;
   message?: string;
+  total_lines?: number;
+  outcome?: { kind: string; recoverable_usd_cents?: number };
+  findings?: {
+    total_recoverable_usd_cents: number;
+    refund_opportunities: Array<{
+      entry_number: string;
+      line_description: string;
+      hts_filed: string;
+      hts_predicted: string;
+      recoverable_amount_usd_cents: number;
+      our_confidence: string;
+    }>;
+  };
 }
 
 export default function AuditBrokerPage() {
@@ -22,6 +35,9 @@ export default function AuditBrokerPage() {
   const [events, setEvents] = useState<StepEvent[]>([]);
   const [latestShot, setLatestShot] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [refundStatus, setRefundStatus] = useState<string | null>(null);
+  const [refundProgress, setRefundProgress] = useState<{ done: number; total: number; recoverable: number }>({ done: 0, total: 0, recoverable: 0 });
+  const [findings, setFindings] = useState<StepEvent["findings"] | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,6 +49,9 @@ export default function AuditBrokerPage() {
     setEvents([]);
     setLatestShot(null);
     setErr(null);
+    setRefundStatus(null);
+    setRefundProgress({ done: 0, total: 0, recoverable: 0 });
+    setFindings(null);
     try {
       const r = await fetch(`${API_BASE_URL}/api/ace-agent`, { method: "POST" });
       if (!r.ok) {
@@ -40,9 +59,29 @@ export default function AuditBrokerPage() {
         return;
       }
       for await (const ev of readNDJSON<StepEvent>(r)) {
-        setEvents((prev) => [...prev, ev]);
+        if (ev.type === "step" || ev.type === "downloaded" || ev.type === "done") {
+          setEvents((prev) => [...prev, ev]);
+        }
         if (ev.type === "step" && ev.screenshot_b64) {
           setLatestShot(ev.screenshot_b64);
+        }
+        if (ev.type === "refund_status") {
+          setRefundStatus(ev.message ?? null);
+          if (typeof ev.total_lines === "number") {
+            setRefundProgress((p) => ({ ...p, total: ev.total_lines as number }));
+          }
+        }
+        if (ev.type === "refund_line") {
+          setRefundProgress((p) => ({
+            done: p.done + 1,
+            total: p.total,
+            recoverable:
+              p.recoverable + (ev.outcome?.kind === "opportunity" ? ev.outcome.recoverable_usd_cents ?? 0 : 0),
+          }));
+        }
+        if (ev.type === "refund_done") {
+          setFindings(ev.findings ?? null);
+          setRefundStatus(null);
         }
         if (ev.type === "error") {
           setErr(ev.message ?? "unknown error");
@@ -165,7 +204,7 @@ export default function AuditBrokerPage() {
       {downloaded.length > 0 && (
         <section className="rounded-card border border-cardline bg-white p-4 shadow-card">
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-widest text-muted">
-            Ready for refund analysis ({downloaded.length} files)
+            Entries pulled ({downloaded.length})
           </h2>
           <ul className="space-y-1 text-xs">
             {downloaded.map((d, i) => (
@@ -175,18 +214,73 @@ export default function AuditBrokerPage() {
               </li>
             ))}
           </ul>
-          <div className="mt-3 flex items-center gap-3">
-            <a
-              href="/find-refunds"
-              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-700"
-            >
-              Run the refund analysis
-              <span aria-hidden>→</span>
-            </a>
-            <span className="text-[11px] text-muted">
-              The pulled entry summaries flow straight into the refund finder.
-            </span>
+        </section>
+      )}
+
+      {/* Refund analysis runs automatically right after the pull */}
+      {(refundStatus || refundProgress.total > 0 || findings) && (
+        <section className="rounded-card border border-accent bg-navy-50 p-5 shadow-card">
+          <div className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+            Refund analysis
           </div>
+          {findings ? (
+            <>
+              <div className="mt-1 flex flex-wrap items-baseline gap-3">
+                <span className="text-4xl font-bold tabular-nums text-accent">
+                  {fmtMoney(findings.total_recoverable_usd_cents)}
+                </span>
+                <span className="text-xs text-muted">
+                  recoverable across {findings.refund_opportunities.length} opportunit
+                  {findings.refund_opportunities.length === 1 ? "y" : "ies"} — pulled and analyzed without you
+                  sending anything
+                </span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {findings.refund_opportunities.map((o, i) => (
+                  <div key={i} className="rounded-md border border-cardline bg-white p-3 text-xs">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="font-mono text-navy">{o.entry_number}</span>
+                      <span className="font-bold tabular-nums text-accent-700">
+                        {fmtMoney(o.recoverable_amount_usd_cents)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-navy">{o.line_description}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                      <span className="rounded bg-warn/10 px-1.5 py-0.5 font-mono text-warn line-through">
+                        {o.hts_filed}
+                      </span>
+                      <span aria-hidden>→</span>
+                      <span className="rounded bg-accent-50 px-1.5 py-0.5 font-mono text-accent-700">
+                        {o.hts_predicted}
+                      </span>
+                      <span className="uppercase tracking-wider">{o.our_confidence} confidence</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="mt-2">
+              <div className="flex items-center gap-2 text-sm text-navy">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />
+                {refundStatus ?? "Analyzing…"}
+              </div>
+              {refundProgress.total > 0 && (
+                <>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-navy-100">
+                    <div
+                      className="h-full bg-accent transition-all"
+                      style={{ width: `${Math.round((refundProgress.done / refundProgress.total) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted">
+                    {refundProgress.done} / {refundProgress.total} line items ·{" "}
+                    <span className="text-accent-700">{fmtMoney(refundProgress.recoverable)}</span> recoverable so far
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </section>
       )}
     </div>

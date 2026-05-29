@@ -98,10 +98,13 @@ export interface MockEntry {
   fileName: string; // matches a real 7501-style PDF we serve
 }
 
+// Entry numbers align with the importer's entry history so the refund
+// analysis after the pull runs on exactly these entries.
 export const MOCK_ENTRIES: MockEntry[] = [
-  { number: "CN-AMA-7195891-13", entryDate: "2025-07-31", port: "Los Angeles, CA", declaredValue: "$48,250.00", fileName: "shenzhen-electronics.pdf" },
-  { number: "CN-AMA-5248288-09", entryDate: "2025-06-12", port: "Long Beach, CA", declaredValue: "$22,910.00", fileName: "shenzhen-electronics.pdf" },
-  { number: "IN-ATL-1182943-02", entryDate: "2025-05-04", port: "Newark, NJ", declaredValue: "$18,260.00", fileName: "india-houseware.pdf" },
+  { number: "CN-AMA-7195891-13", entryDate: "2025-07-31", port: "Long Beach, CA", declaredValue: "$17,144.19", fileName: "shenzhen-electronics.pdf" },
+  { number: "CN-AMA-5248288-09", entryDate: "2025-07-19", port: "Long Beach, CA", declaredValue: "$17,029.60", fileName: "shenzhen-electronics.pdf" },
+  { number: "CN-AMA-1485539-15", entryDate: "2025-07-16", port: "Long Beach, CA", declaredValue: "$14,764.84", fileName: "shenzhen-electronics.pdf" },
+  { number: "CN-AMA-7002049-03", entryDate: "2026-05-11", port: "Long Beach, CA", declaredValue: "$2,327.00", fileName: "shenzhen-electronics.pdf" },
 ];
 
 export function renderEntries(): string {
