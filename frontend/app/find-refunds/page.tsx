@@ -130,6 +130,25 @@ export default function FindRefundsPage() {
     setParseWarnings([]);
   }, []);
 
+  const [loadingSample, setLoadingSample] = useState(false);
+  const loadSample = useCallback(async () => {
+    setLoadingSample(true);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/samples/entries`, { cache: "no-store" });
+      if (!r.ok) {
+        setError(`could not load sample: ${r.status}`);
+        return;
+      }
+      const text = await r.text();
+      const file = new File([text], "atlas-retail-entries.json", { type: "application/json" });
+      addFiles([file]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingSample(false);
+    }
+  }, [addFiles]);
+
   const start = useCallback(async () => {
     if (files.length === 0) return;
     setRunning(true);
@@ -307,10 +326,21 @@ export default function FindRefundsPage() {
               scratch and surface duty overpayments. Multiple files are combined.
             </div>
             <div className="mt-3 text-[11px] text-muted">
-              PDF: one CBP Form 7501 per file (continuation sheets included).{" "}
-              JSON: see <code className="rounded bg-navy-50 px-1 text-[11px]">data/sample-entries/</code> for the
-              expected shape.
+              PDF: one CBP Form 7501 per file (continuation sheets included). JSON: your broker&apos;s standard
+              entry export.
             </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void loadSample();
+              }}
+              disabled={loadingSample}
+              className="mt-4 rounded-md border border-accent/40 bg-accent-50 px-3.5 py-1.5 text-xs font-semibold text-accent-700 transition hover:bg-accent-100 disabled:opacity-50"
+            >
+              {loadingSample ? "Loading…" : "Load a sample importer's 12 months of entries"}
+            </button>
           </label>
 
           {/* File list + confirmation card */}

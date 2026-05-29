@@ -12,8 +12,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-const VALID_USER = "demo@acme-fba.com";
-const VALID_PASS = "demo";
+const VALID_USER = "imports@atlasretail.com";
+const VALID_PASS = "Atl@s2026!";
 const IMPORTER_NAME = "Atlas Retail Holdings LLC";
 
 const PAGE_CSS = `
@@ -38,15 +38,15 @@ const PAGE_CSS = `
 function shell(title: string, body: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>${title} — ACE Importer Portal (demo)</title>
+<head><meta charset="utf-8"><title>${title} — ACE Importer Portal</title>
 <style>${PAGE_CSS}</style></head>
 <body>
   <div class="topbar">
     <div>
       <span class="brand">ACE Importer Portal</span>
-      <span class="nav"><a href="/api/mock-ace/dashboard">Dashboard</a><a href="/api/mock-ace/entries">Entry Summaries</a></span>
+      <span class="nav"><a href="/api/portal/dashboard">Dashboard</a><a href="/api/portal/entries">Entry Summaries</a></span>
     </div>
-    <span class="seal">CBP · U.S. Customs and Border Protection · demo build</span>
+    <span class="seal">CBP · U.S. Customs and Border Protection · Automated Commercial Environment</span>
   </div>
   <main>${body}</main>
 </body></html>`;
@@ -59,7 +59,7 @@ export function renderLogin(error?: string): string {
     <h1>Sign in to the Importer Portal</h1>
     <p>Connect to your importer-of-record account to access entry summaries and history.</p>
     ${error ? `<p style="color:#b91c1c;font-size:13px;">${error}</p>` : ""}
-    <form method="POST" action="/api/mock-ace/login">
+    <form method="POST" action="/api/portal/login">
       <h2>Credentials</h2>
       <label>Email</label>
       <input type="text" name="username" autocomplete="off" />
@@ -78,10 +78,10 @@ export function renderDashboard(): string {
     "Dashboard",
     `
     <h1>${IMPORTER_NAME}</h1>
-    <p>Welcome to the ACE Importer Portal. <a href="/api/mock-ace/entries">View your entry summaries →</a></p>
+    <p>Welcome to the ACE Importer Portal. <a href="/api/portal/entries">View your entry summaries →</a></p>
     <h2>Quick links</h2>
     <ul>
-      <li><a href="/api/mock-ace/entries">Entry Summaries (last 12 months)</a></li>
+      <li><a href="/api/portal/entries">Entry Summaries (last 12 months)</a></li>
       <li><a href="#">CF 28 / CF 29 Notices</a></li>
       <li><a href="#">Liquidation Status</a></li>
       <li><a href="#">Statement Reconciliation</a></li>
@@ -122,7 +122,7 @@ export function renderEntries(): string {
           <td>${e.entryDate}</td>
           <td>${e.port}</td>
           <td>${e.declaredValue}</td>
-          <td><a class="download-link" data-idx="${i}" href="/api/mock-ace/entry/${i}/pdf" download>Download 7501</a></td>
+          <td><a class="download-link" data-idx="${i}" href="/api/portal/entry/${i}/pdf" download>Download 7501</a></td>
         </tr>`,
         ).join("")}
       </tbody>

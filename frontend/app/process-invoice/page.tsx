@@ -117,6 +117,25 @@ export default function ProcessInvoicePage() {
     setFiles((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
+  const [loadingSample, setLoadingSample] = useState(false);
+  const loadSample = useCallback(async () => {
+    setLoadingSample(true);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/samples/invoice`, { cache: "no-store" });
+      if (!r.ok) {
+        setError(`could not load sample: ${r.status}`);
+        return;
+      }
+      const blob = await r.blob();
+      const file = new File([blob], "shenzhen-aurora-electronics.pdf", { type: "application/pdf" });
+      addFiles([file]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingSample(false);
+    }
+  }, [addFiles]);
+
   const onDrop = useCallback(
     (e: React.DragEvent<HTMLLabelElement>) => {
       e.preventDefault();
@@ -274,6 +293,18 @@ export default function ProcessInvoicePage() {
             Multiple documents for the same shipment are merged into one record. Invoice + packing list + BL together give the
             classifier the most context.
           </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void loadSample();
+            }}
+            disabled={loadingSample}
+            className="mt-4 rounded-md border border-accent/40 bg-accent-50 px-3.5 py-1.5 text-xs font-semibold text-accent-700 transition hover:bg-accent-100 disabled:opacity-50"
+          >
+            {loadingSample ? "Loading…" : "Load a sample shipment"}
+          </button>
         </label>
       )}
 

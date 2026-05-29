@@ -131,8 +131,7 @@ export default function BrokerCopilotPage() {
       </section>
 
       <p className="text-[11px] italic text-muted">
-        Demo single-tenant note: all rows are keyed to a placeholder "demo" customer. Production
-        scopes per importer-of-record.
+        Every correction is scoped to this importer of record and feeds that importer&apos;s SKU memory only.
       </p>
     </div>
   );

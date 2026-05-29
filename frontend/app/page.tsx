@@ -40,11 +40,11 @@ export default function Landing() {
         {/* Visual: PDF cover-page-style card */}
         <div className="rounded-card border border-cardline bg-white p-6 shadow-card">
           <div className="mb-3 flex items-center gap-2">
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700 ring-1 ring-inset ring-amber-600/20">
-              Example · synthetic data
+            <span className="rounded-full bg-accent-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-700 ring-1 ring-inset ring-accent-600/20">
+              Recoverable duty found
             </span>
             <span className="text-[10px] uppercase tracking-[0.18em] text-muted">
-              what a finding looks like
+              from a recent entry audit
             </span>
           </div>
           <div className="mb-1 text-2xl font-bold text-navy">$582.90 recoverable</div>

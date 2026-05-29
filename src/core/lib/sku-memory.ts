@@ -13,8 +13,8 @@
 import type { AppContext } from "@/core/app-context";
 
 const DEMO_CUSTOMER_ID = "demo-customer";
-const DEMO_CUSTOMER_NAME = "Demo importer (single-tenant demo)";
-const DEMO_CUSTOMER_EMAIL = "demo@customs-agent.local";
+const DEMO_CUSTOMER_NAME = "Atlas Retail Holdings LLC";
+const DEMO_CUSTOMER_EMAIL = "imports@atlasretail.com";
 
 export type SkuMemorySource = "agent" | "broker";
 

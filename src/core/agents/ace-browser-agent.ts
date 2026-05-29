@@ -7,7 +7,7 @@
 // finder — no CSV upload, no manual data entry from the importer.
 //
 // For the local demo, the target portal is the in-repo mock at
-// /api/mock-ace/* which serves HTML pages and downloads back the canned
+// /api/portal/* which serves HTML pages and downloads back the canned
 // sample 7501 PDFs. The agent doesn't know it's mock — it navigates by
 // selector and link text exactly as it would on the real portal.
 //
@@ -34,7 +34,7 @@ export type StepEvent =
   | { type: "error"; message: string };
 
 export interface AceRunOpts {
-  /** Base URL of the portal (the mock is /api/mock-ace under the backend). */
+  /** Base URL of the portal (the mock is /api/portal under the backend). */
   portal_base_url: string;
   username: string;
   password: string;
@@ -98,7 +98,7 @@ export async function runAceBrowserAgent(opts: AceRunOpts): Promise<void> {
     // 5. Navigate to Entry Summaries
     await Promise.all([
       page.waitForLoadState("domcontentloaded"),
-      page.click('a[href="/api/mock-ace/entries"]'),
+      page.click('a[href="/api/portal/entries"]'),
     ]);
     await step(
       opts,

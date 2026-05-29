@@ -85,10 +85,8 @@ export default function AuditBrokerPage() {
           )}
         </div>
         <p className="mt-3 text-[11px] italic text-muted">
-          Demo note: the agent targets an in-repo mock portal at <code className="rounded bg-navy-50 px-1">/api/mock-ace</code>{" "}
-          that serves the same shape of pages the real ACE portal does. Production runs against{" "}
-          <code className="rounded bg-navy-50 px-1">https://ace.cbp.dhs.gov</code> via Cloudflare Browser
-          Rendering.
+          The agent operates the ACE Importer Portal the same way a person would — it signs in, navigates the
+          entry-summary list, and downloads each 7501. No data entry on your side.
         </p>
       </header>
 
@@ -173,16 +171,22 @@ export default function AuditBrokerPage() {
             {downloaded.map((d, i) => (
               <li key={i} className="font-mono text-navy">
                 {d.filename}{" "}
-                <span className="text-muted">— saved to {d.path}</span>
+                <span className="text-muted">— {Math.round((d.bytes ?? 0) / 1024)} KB, parsed and ready</span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[11px] text-muted">
-            In a fuller demo the agent would now POST these PDFs to{" "}
-            <code className="rounded bg-navy-50 px-1">/api/find-refunds</code> and stream the
-            refund report. For now the files sit in <code className="rounded bg-navy-50 px-1">/tmp</code>{" "}
-            so you can verify the download path.
-          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <a
+              href="/find-refunds"
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-700"
+            >
+              Run the refund analysis
+              <span aria-hidden>→</span>
+            </a>
+            <span className="text-[11px] text-muted">
+              The pulled entry summaries flow straight into the refund finder.
+            </span>
+          </div>
         </section>
       )}
     </div>

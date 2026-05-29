@@ -126,6 +126,32 @@ apiRoute.get("/", (c) =>
   }),
 );
 
+// ── Sample shipment files ────────────────────────────────────────────────
+// One-click loading for the two primary surfaces: the frontend fetches
+// these, wraps them in a File, and runs the normal pipeline — so a single
+// click starts a full run end-to-end.
+apiRoute.get("/samples/invoice", async (c) => {
+  const p = path.resolve(process.cwd(), "data/sample-invoices/shenzhen-electronics.pdf");
+  try {
+    const bytes = await fs.readFile(p);
+    c.header("content-type", "application/pdf");
+    c.header("content-disposition", 'inline; filename="shenzhen-aurora-electronics.pdf"');
+    return c.body(bytes as unknown as ArrayBuffer);
+  } catch {
+    return c.json({ error: "sample invoice not available" }, 404);
+  }
+});
+apiRoute.get("/samples/entries", async (c) => {
+  const p = path.resolve(process.cwd(), "data/sample-entries/amazon-fba.json");
+  try {
+    const text = await fs.readFile(p, "utf8");
+    c.header("content-type", "application/json");
+    return c.body(text);
+  } catch {
+    return c.json({ error: "sample entries not available" }, 404);
+  }
+});
+
 // ── POST /api/process-invoice ─────────────────────────────────────────────
 // Accepts multipart/form-data with one or more "file" fields (PDF or image).
 // All attached files are merged into ONE shipment by the extractor — they
@@ -711,11 +737,11 @@ apiRoute.get("/regulatory-watch", async (c) => {
 // Real HTML pages the demo browser agent navigates. In production the
 // agent points at the live ACE portal; these endpoints exist so the
 // pattern is demonstrable end-to-end on localhost.
-apiRoute.get("/mock-ace/login", (c) => {
+apiRoute.get("/portal/login", (c) => {
   c.header("content-type", "text/html; charset=utf-8");
   return c.body(renderLogin());
 });
-apiRoute.post("/mock-ace/login", async (c) => {
+apiRoute.post("/portal/login", async (c) => {
   const form = await c.req.formData();
   const username = form.get("username")?.toString() ?? null;
   const password = form.get("password")?.toString() ?? null;
@@ -723,17 +749,17 @@ apiRoute.post("/mock-ace/login", async (c) => {
     c.header("content-type", "text/html; charset=utf-8");
     return c.body(renderLogin("Invalid email or password."));
   }
-  return c.redirect("/api/mock-ace/dashboard");
+  return c.redirect("/api/portal/dashboard");
 });
-apiRoute.get("/mock-ace/dashboard", (c) => {
+apiRoute.get("/portal/dashboard", (c) => {
   c.header("content-type", "text/html; charset=utf-8");
   return c.body(renderDashboard());
 });
-apiRoute.get("/mock-ace/entries", (c) => {
+apiRoute.get("/portal/entries", (c) => {
   c.header("content-type", "text/html; charset=utf-8");
   return c.body(renderEntries());
 });
-apiRoute.get("/mock-ace/entry/:idx/pdf", async (c) => {
+apiRoute.get("/portal/entry/:idx/pdf", async (c) => {
   const idx = Number.parseInt(c.req.param("idx") ?? "", 10);
   const bytes = await loadEntryPdf(idx);
   if (!bytes) return c.json({ error: "no such entry" }, 404);
@@ -754,12 +780,12 @@ apiRoute.post("/ace-agent", async (c) => {
     const emit = async (obj: unknown) => {
       await s.write(JSON.stringify(obj) + "\n");
     };
-    const base = `${new URL(c.req.url).origin}/api/mock-ace`;
+    const base = `${new URL(c.req.url).origin}/api/portal`;
     try {
       await runAceBrowserAgent({
         portal_base_url: base,
-        username: "demo@acme-fba.com",
-        password: "demo",
+        username: "imports@atlasretail.com",
+        password: "Atl@s2026!",
         onEvent: emit,
       });
     } catch (e) {
