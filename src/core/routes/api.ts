@@ -30,6 +30,7 @@ import { generateAuditDefense } from "@/core/agents/audit-defense";
 import { verifyAgainstCross } from "@/core/agents/cross-verifier";
 import { runDebate } from "@/core/agents/debate";
 import { runCopilot } from "@/core/agents/copilot";
+import { runTariffSimulation } from "@/core/lib/tariff-simulator";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import {
   MOCK_ENTRIES,
@@ -1127,6 +1128,25 @@ apiRoute.post("/copilot", async (c) => {
     };
     await runCopilot(ctx, parsed.data.messages, emit);
   });
+});
+
+// ── POST /api/simulate ───────────────────────────────────────────────────
+// Portfolio-level tariff-policy shock simulation over the importer's whole
+// SKU catalog. Deterministic, instant.
+const SimulateBody = z.object({
+  section_301_rate: z.number().min(0).max(1).nullable().default(null),
+  reroute_china_to: z.string().regex(/^[A-Z]{2}$/).nullable().default(null),
+});
+apiRoute.post("/simulate", async (c) => {
+  const ctx = c.var.ctx;
+  const customerId = await ensureDemoCustomer(ctx);
+  await seedSkuMemoryIfEmpty(ctx, customerId);
+  let body: unknown = {};
+  try { body = await c.req.json(); } catch { /* defaults */ }
+  const parsed = SimulateBody.safeParse(body ?? {});
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  const result = await runTariffSimulation(ctx, customerId, parsed.data);
+  return c.json(result);
 });
 
 void z; // keep zod import even if no top-level uses inside this file
