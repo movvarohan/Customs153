@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { classNames } from "@/lib/api";
 
 const ITEMS: Array<{ href: string; label: string }> = [
+  { href: "/control-room", label: "Control room" },
   { href: "/process-invoice", label: "Process invoice" },
   { href: "/find-refunds", label: "Find refunds" },
   { href: "/broker", label: "Broker queue" },

@@ -915,4 +915,190 @@ apiRoute.post("/counterfactual", async (c) => {
   }
 });
 
+// ── POST /api/control-room ───────────────────────────────────────────────
+// The showpiece: fires the whole agent fleet on ONE product, in sequence,
+// streaming each agent's status (queued -> running -> done) and result so
+// the UI can render a live agent-orchestration view. Each agent is wrapped
+// so one failure degrades that node without killing the run.
+const ControlRoomBody = z.object({
+  description: z.string().min(1).default("Clear silicone protective case that snaps onto an iPhone, with raised camera bezel"),
+  country_of_origin: z.string().default("CN"),
+  customs_value_usd_cents: z.number().int().positive().default(400000),
+});
+apiRoute.post("/control-room", async (c) => {
+  const ctx = c.var.ctx;
+  await seedDemoFxRates(ctx);
+  let body: unknown = {};
+  try { body = await c.req.json(); } catch { /* defaults */ }
+  const input = ControlRoomBody.parse(body ?? {});
+  const isoCountry = toIsoAlpha2(input.country_of_origin);
+
+  return stream(c, async (s) => {
+    c.header("content-type", "application/x-ndjson");
+    // Serialize writes — downstream agents run concurrently and emit at the
+    // same time, so chain writes to avoid interleaving partial JSON lines.
+    let writeChain: Promise<unknown> = Promise.resolve();
+    const emit = (o: unknown) => {
+      writeChain = writeChain.then(() => s.write(JSON.stringify(o) + "\n"));
+      return writeChain;
+    };
+    const agent = (id: string, status: string, extra: Record<string, unknown> = {}) =>
+      emit({ type: "agent", id, status, ...extra });
+
+    await emit({ type: "start", input });
+
+    // 1. CLASSIFIER (includes retrieval; streams reasoning)
+    let classification: Awaited<ReturnType<typeof classify>>["result"] | null = null;
+    let candidateCount = 0;
+    await agent("classifier", "running");
+    try {
+      const { result, trace } = await classify(
+        ctx,
+        { description: input.description, country_of_origin: isoCountry, customer_id: await ensureDemoCustomer(ctx) },
+        { onReasoningDelta: (delta) => void emit({ type: "reasoning_delta", delta }) },
+      );
+      classification = result;
+      candidateCount = trace.candidates.length;
+      await agent("classifier", "done", {
+        hts_code: result.hts_code,
+        hts_code_8: result.hts_code_8,
+        confidence: result.confidence,
+        gri_rule_applied: result.gri_rule_applied,
+        citations: result.citations,
+        candidate_count: candidateCount,
+      });
+    } catch (e) {
+      await agent("classifier", "error", { message: e instanceof Error ? e.message : String(e) });
+    }
+
+    if (!classification) {
+      await emit({ type: "done", dossier: null });
+      return;
+    }
+
+    // 2. DUTY (deterministic; full landed for one line)
+    let duty: Awaited<ReturnType<typeof calculateDuty>> | null = null;
+    await agent("duty", "running");
+    try {
+      duty = await calculateDuty(ctx, {
+        hts_code: classification.hts_code_8,
+        country_of_origin: isoCountry,
+        customs_value_usd_cents: input.customs_value_usd_cents,
+        transport_mode: "ocean",
+      });
+      await agent("duty", "done", {
+        total_duty_usd_cents: duty.total_duty_usd_cents,
+        components: duty.components.map((x) => ({ kind: x.kind, rate: x.rate, amount_usd_cents: x.amount_usd_cents })),
+      });
+    } catch (e) {
+      await agent("duty", "error", { message: e instanceof Error ? e.message : String(e) });
+    }
+
+    // 3–6. The downstream agents depend only on the classification, not on
+    // each other — so fire them concurrently. The UI lights up all four at
+    // once and they resolve independently.
+    const cls = classification;
+    await Promise.all([agent("cross", "running"), agent("debate", "running"), agent("counterfactual", "running"), agent("audit", "running")]);
+
+    const crossTask = (async () => {
+      try {
+        const r = await verifyAgainstCross(ctx, {
+          description: input.description,
+          predicted_hts_code: cls.hts_code,
+          predicted_hts_code_8: cls.hts_code_8,
+        });
+        await agent("cross", "done", {
+          agrees: r.defense.agrees_with_predicted,
+          confidence: r.defense.confidence,
+          suggested_hts_code: r.defense.suggested_hts_code,
+          evidence_count: r.defense.evidence.length,
+          top_ruling: r.defense.evidence[0]?.ruling_number ?? null,
+        });
+      } catch (e) {
+        await agent("cross", "error", { message: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+
+    const debateTask = (async () => {
+      try {
+        const d = await runDebate(ctx, {
+          description: input.description,
+          predicted_hts_code: cls.hts_code,
+          predicted_hts_code_8: cls.hts_code_8,
+          classifier_reasoning: cls.reasoning,
+          classifier_citations: cls.citations,
+          alternative_codes_considered: cls.alternative_codes_considered,
+        });
+        await agent("debate", "done", {
+          winner: d.judge.winner,
+          final_hts_code: d.judge.final_hts_code,
+          advocate_code: d.advocate.defended_hts_code,
+          challenger_code: d.challenger.alternative_hts_code,
+          revised: d.revised,
+        });
+      } catch (e) {
+        await agent("debate", "error", { message: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+
+    const cfTask = (async () => {
+      try {
+        const cf = await generateCounterfactuals(ctx, {
+          description: input.description,
+          filed_hts_code_8: cls.hts_code_8,
+          filed_country_iso2: isoCountry,
+          customs_value_usd_cents: input.customs_value_usd_cents,
+          filed_total_duty_usd_cents: duty?.total_duty_usd_cents ?? 0,
+        });
+        const best = cf.scenarios[0] ?? null;
+        await agent("counterfactual", "done", {
+          scenario_count: cf.scenarios.length,
+          best_label: best?.label ?? null,
+          best_savings_usd_cents: best?.savings_usd_cents ?? 0,
+          best_kind: best?.kind ?? null,
+        });
+      } catch (e) {
+        await agent("counterfactual", "error", { message: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+
+    const auditTask = (async () => {
+      try {
+        const ad = await generateAuditDefense(ctx, {
+          description: input.description,
+          hts_code: cls.hts_code,
+          hts_code_8: cls.hts_code_8,
+          gri_rule_applied: cls.gri_rule_applied,
+          reasoning: cls.reasoning,
+          citations: cls.citations,
+          alternative_codes_considered: cls.alternative_codes_considered,
+          missing_inputs_for_precision: cls.missing_inputs_for_precision,
+          confidence: cls.confidence,
+          country_of_origin: isoCountry,
+        });
+        await agent("audit", "done", {
+          question_count: ad.defense.questions.length,
+          primary_risk: ad.defense.primary_risk,
+          readiness: ad.defense.overall_readiness,
+        });
+      } catch (e) {
+        await agent("audit", "error", { message: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+
+    await Promise.all([crossTask, debateTask, cfTask, auditTask]);
+
+    await emit({
+      type: "done",
+      dossier: {
+        description: input.description,
+        country: isoCountry,
+        hts_code: classification.hts_code,
+        confidence: classification.confidence,
+        total_duty_usd_cents: duty?.total_duty_usd_cents ?? null,
+      },
+    });
+  });
+});
+
 void z; // keep zod import even if no top-level uses inside this file
