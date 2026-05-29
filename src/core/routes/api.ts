@@ -29,6 +29,7 @@ import { generateCounterfactuals } from "@/core/agents/counterfactual";
 import { generateAuditDefense } from "@/core/agents/audit-defense";
 import { verifyAgainstCross } from "@/core/agents/cross-verifier";
 import { runDebate } from "@/core/agents/debate";
+import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
 import { withRetry } from "@/core/lib/retry";
 import { seedDemoFxRates } from "@/core/lib/fx-rates";
@@ -676,6 +677,21 @@ apiRoute.post("/debate", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
   try {
     const result = await runDebate(ctx, parsed.data);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+// ── GET /api/regulatory-watch ─────────────────────────────────────────
+// Fetches recent Federal Register documents from CBP / USTR / ITA /
+// USITC, parses each with Claude for HTS / country / direction impact,
+// and cross-references the current customer's SKU memory.
+apiRoute.get("/regulatory-watch", async (c) => {
+  const ctx = c.var.ctx;
+  const customerId = await ensureDemoCustomer(ctx);
+  try {
+    const result = await runTariffWatch(ctx, customerId);
     return c.json(result);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
