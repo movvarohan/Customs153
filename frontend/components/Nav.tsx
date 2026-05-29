@@ -8,6 +8,7 @@ const ITEMS: Array<{ href: string; label: string }> = [
   { href: "/copilot", label: "Copilot" },
   { href: "/control-room", label: "Control room" },
   { href: "/simulator", label: "Policy lab" },
+  { href: "/catalog", label: "Catalog" },
   { href: "/process-invoice", label: "Process invoice" },
   { href: "/find-refunds", label: "Find refunds" },
   { href: "/broker", label: "Broker queue" },

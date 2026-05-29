@@ -31,6 +31,7 @@ import { verifyAgainstCross } from "@/core/agents/cross-verifier";
 import { runDebate } from "@/core/agents/debate";
 import { runCopilot } from "@/core/agents/copilot";
 import { runTariffSimulation } from "@/core/lib/tariff-simulator";
+import { analyzeSourcing } from "@/core/agents/sourcing-intel";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import {
   MOCK_ENTRIES,
@@ -1147,6 +1148,57 @@ apiRoute.post("/simulate", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
   const result = await runTariffSimulation(ctx, customerId, parsed.data);
   return c.json(result);
+});
+
+// ── GET /api/catalog ─────────────────────────────────────────────────────
+// Portfolio overview of the importer's catalog: every SKU with its code,
+// representative annual value, annual duty, and effective rate. Reuses the
+// simulator's baseline pass (no scenario), sorted by duty exposure.
+apiRoute.get("/catalog", async (c) => {
+  const ctx = c.var.ctx;
+  const customerId = await ensureDemoCustomer(ctx);
+  await seedSkuMemoryIfEmpty(ctx, customerId);
+  const sim = await runTariffSimulation(ctx, customerId, { section_301_rate: null, reroute_china_to: null });
+  const rows = sim.rows
+    .map((r) => ({
+      description: r.description,
+      hts_code_8: r.hts_code_8,
+      chapter: r.chapter,
+      origin: r.origin,
+      annual_value_usd_cents: r.annual_value_usd_cents,
+      annual_duty_usd_cents: r.baseline_duty_usd_cents,
+      effective_rate: r.annual_value_usd_cents > 0 ? r.baseline_duty_usd_cents / r.annual_value_usd_cents : 0,
+    }))
+    .sort((a, b) => b.annual_duty_usd_cents - a.annual_duty_usd_cents);
+  return c.json({
+    total_value_usd_cents: sim.baseline_value_usd_cents,
+    total_duty_usd_cents: sim.baseline_total_usd_cents,
+    sku_count: rows.length,
+    rows,
+  });
+});
+
+// ── POST /api/sourcing-intel ─────────────────────────────────────────────
+// Second-order strategy for one SKU: relocation options (duty-priced),
+// customs-relief mechanisms, and second-order effects.
+const SourcingIntelBody = z.object({
+  description: z.string().min(1),
+  hts_code_8: z.string().regex(/^\d{4}\.\d{2}\.\d{2}$/),
+  current_country_iso2: z.string().regex(/^[A-Z]{2}$/).default("CN"),
+  annual_value_usd_cents: z.number().int().positive(),
+});
+apiRoute.post("/sourcing-intel", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = SourcingIntelBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  try {
+    const result = await analyzeSourcing(ctx, parsed.data);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
 });
 
 void z; // keep zod import even if no top-level uses inside this file
