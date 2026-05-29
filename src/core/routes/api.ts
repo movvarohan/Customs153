@@ -1136,8 +1136,23 @@ apiRoute.post("/copilot", async (c) => {
 // SKU catalog. Deterministic, instant.
 const SimulateBody = z.object({
   section_301_rate: z.number().min(0).max(1).nullable().default(null),
+  reciprocal_rate: z.number().min(0).max(1).default(0),
+  section_232_enabled: z.boolean().default(true),
   reroute_china_to: z.string().regex(/^[A-Z]{2}$/).nullable().default(null),
+  unit_cost_premium_pct: z.number().min(0).max(2).default(0),
+  switching_cost_usd_cents: z.number().int().min(0).default(0),
+  include_entry_fees: z.boolean().default(true),
 });
+// The "today" baseline scenario: table rates, no reciprocal, 232 on, no reroute.
+const BASELINE_SCENARIO = {
+  section_301_rate: null,
+  reciprocal_rate: 0,
+  section_232_enabled: true,
+  reroute_china_to: null,
+  unit_cost_premium_pct: 0,
+  switching_cost_usd_cents: 0,
+  include_entry_fees: true,
+} as const;
 apiRoute.post("/simulate", async (c) => {
   const ctx = c.var.ctx;
   const customerId = await ensureDemoCustomer(ctx);
@@ -1158,7 +1173,9 @@ apiRoute.get("/catalog", async (c) => {
   const ctx = c.var.ctx;
   const customerId = await ensureDemoCustomer(ctx);
   await seedSkuMemoryIfEmpty(ctx, customerId);
-  const sim = await runTariffSimulation(ctx, customerId, { section_301_rate: null, reroute_china_to: null });
+  // Catalog shows per-SKU duty exposure; exclude entry-level fees so the
+  // column sum reconciles with the reported total.
+  const sim = await runTariffSimulation(ctx, customerId, { ...BASELINE_SCENARIO, include_entry_fees: false });
   const rows = sim.rows
     .map((r) => ({
       description: r.description,
@@ -1172,7 +1189,7 @@ apiRoute.get("/catalog", async (c) => {
     .sort((a, b) => b.annual_duty_usd_cents - a.annual_duty_usd_cents);
   return c.json({
     total_value_usd_cents: sim.baseline_value_usd_cents,
-    total_duty_usd_cents: sim.baseline_total_usd_cents,
+    total_duty_usd_cents: sim.baseline_stack.total_usd_cents,
     sku_count: rows.length,
     rows,
   });
