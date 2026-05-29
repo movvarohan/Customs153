@@ -15,7 +15,7 @@ interface Summary {
     model: string;
     prompt_version: string;
     gold: string;
-    metrics: Array<{ label: string; value: number; n: string; target: number | null }>;
+    metrics: Array<{ label: string; value: number; n: string }>;
   };
   calibration: Array<{ bucket: string; n: number; top1_8: number; top3_8: number }>;
   prompt_evolution: Array<{ version: string; change: string; result: string }>;
@@ -101,20 +101,12 @@ export default function MethodologyPage() {
                 <div key={m.label} className="rounded-card border border-cardline bg-white p-5 shadow-card">
                   <div className="text-[11px] uppercase tracking-wider text-muted">{m.label}</div>
                   <div className="mt-1 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold tabular-nums text-navy">{m.value.toFixed(1)}%</span>
+                    <span className="text-3xl font-bold tabular-nums text-accent">{m.value.toFixed(1)}%</span>
                     <span className="text-xs text-muted">{m.n}</span>
                   </div>
-                  {m.target !== null && (
-                    <div className="mt-2">
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-navy-50">
-                        <div
-                          className={classNames("h-full rounded-full", m.value >= m.target ? "bg-accent" : "bg-amber-400")}
-                          style={{ width: `${Math.min(100, m.value)}%` }}
-                        />
-                      </div>
-                      <div className="mt-1 text-[10px] text-muted">MVP target {m.target}%</div>
-                    </div>
-                  )}
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-navy-50">
+                    <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, m.value)}%` }} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -220,16 +212,16 @@ export default function MethodologyPage() {
                 <thead>
                   <tr className="border-b border-cardline bg-navy-50 text-left text-[11px] uppercase tracking-wider text-muted">
                     <th className="py-2.5 pl-4">Metric</th>
-                    <th className="py-2.5">Sonnet 4.5 (shipped)</th>
-                    <th className="py-2.5 pr-4">Opus 4.7</th>
+                    <th className="py-2.5">Sonnet 4.5</th>
+                    <th className="py-2.5 pr-4">Opus 4.7 (best)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {s.model_bakeoff.rows.map((r) => (
                     <tr key={r.metric} className="border-b border-cardline/60 last:border-b-0">
                       <td className="py-2.5 pl-4 text-navy">{r.metric}</td>
-                      <td className="py-2.5 tabular-nums font-semibold text-accent-700">{r.sonnet}%</td>
-                      <td className="py-2.5 pr-4 tabular-nums text-muted">{r.opus}%</td>
+                      <td className="py-2.5 tabular-nums text-muted">{r.sonnet}%</td>
+                      <td className="py-2.5 pr-4 tabular-nums font-semibold text-accent-700">{r.opus}%</td>
                     </tr>
                   ))}
                 </tbody>

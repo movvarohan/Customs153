@@ -24,7 +24,7 @@ import { loadTariffRates } from "@/core/lib/tariff-rates";
 import { parseEntrySummary } from "@/core/agents/entry-summary-parser";
 import { findRefundOpportunities } from "@/core/agents/psc-finder";
 import { renderRefundReportToBuffer } from "@/core/lib/render-refund-pdf";
-import { ensureDemoCustomer, listSkuMemory, upsertSkuMemory } from "@/core/lib/sku-memory";
+import { ensureDemoCustomer, listSkuMemory, upsertSkuMemory, seedSkuMemoryIfEmpty } from "@/core/lib/sku-memory";
 import { generateCounterfactuals } from "@/core/agents/counterfactual";
 import { generateAuditDefense } from "@/core/agents/audit-defense";
 import { verifyAgainstCross } from "@/core/agents/cross-verifier";
@@ -659,6 +659,7 @@ apiRoute.post("/render-refund-pdf", async (c) => {
 apiRoute.get("/broker/sku-memory", async (c) => {
   const ctx = c.var.ctx;
   const customerId = await ensureDemoCustomer(ctx);
+  await seedSkuMemoryIfEmpty(ctx, customerId);
   const rows = await listSkuMemory(ctx, customerId);
   return c.json({ customer_id: customerId, rows });
 });

@@ -50,6 +50,40 @@ export async function ensureDemoCustomer(ctx: AppContext): Promise<string> {
   return DEMO_CUSTOMER_ID;
 }
 
+/** A realistic starter catalog so the broker queue is never empty. */
+const SEED_ROWS: Array<{ description: string; hts_code: string; source: SkuMemorySource }> = [
+  { description: "Wireless Bluetooth over-ear headphones with rechargeable battery and active noise cancellation", hts_code: "8518.30.20.00", source: "broker" },
+  { description: "USB-C to USB-C charging cable, 6 ft braided nylon, 100W power delivery", hts_code: "8544.42.90.90", source: "broker" },
+  { description: "20W USB-C PD fast wall charger, compact dual-port", hts_code: "8504.40.95.40", source: "broker" },
+  { description: "Stainless steel double-wall vacuum-insulated water bottle, 750 ml, leakproof lid", hts_code: "9617.00.10.00", source: "broker" },
+  { description: "Silicone phone case for 6.1-inch smartphone, clear, raised camera bezel", hts_code: "3926.90.99.89", source: "agent" },
+  { description: "LED desk lamp with adjustable arm, USB-powered, aluminum base", hts_code: "9405.21.60.00", source: "agent" },
+  { description: "Polypropylene food storage container set with snap-on lids, 1 liter, microwave safe", hts_code: "3924.10.40.00", source: "agent" },
+  { description: "Bamboo end-grain cutting board, 18 x 12 in, food-safe finish", hts_code: "4419.11.00.00", source: "agent" },
+];
+
+/**
+ * Seed the starter catalog if the customer has no SKU memory yet. Idempotent
+ * and safe to call on every request — it only writes when the table is empty
+ * for this customer, so a fresh DB (or a wiped .data dir) self-populates.
+ */
+export async function seedSkuMemoryIfEmpty(ctx: AppContext, customerId: string): Promise<void> {
+  const existing = await ctx.db
+    .prepare("SELECT COUNT(*) AS n FROM sku_master WHERE customer_id = ?")
+    .bind(customerId)
+    .first<{ n: number }>();
+  if (existing && Number(existing.n) > 0) return;
+  for (const r of SEED_ROWS) {
+    await upsertSkuMemory(ctx, {
+      customer_id: customerId,
+      description: r.description,
+      hts_code: r.hts_code,
+      classification_id: null,
+      source: r.source,
+    });
+  }
+}
+
 /**
  * Look up a prior decision for this customer's description. Exact match
  * first (case-insensitive). If sku_master grows a "source" column later we

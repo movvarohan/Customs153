@@ -150,6 +150,7 @@ function ClassificationGrid({
   busy: string | null;
   confirm: (description: string, hts_code: string, action: "confirm" | "correct") => Promise<void>;
 }) {
+  const [openSku, setOpenSku] = useState<string | null>(null);
   return (
     <div className="overflow-x-auto rounded-card border border-cardline bg-white shadow-card">
       <table className="w-full border-collapse text-sm">
@@ -168,64 +169,112 @@ function ClassificationGrid({
             const dirty = edit !== r.current_hts_code;
             const valid = /^\d{4}\.\d{2}\.\d{2}\.\d{2}$/.test(edit);
             const isBusy = busy === r.canonical_description;
+            const open = openSku === r.sku;
             return (
-              <tr
-                key={r.sku}
-                className={classNames(
-                  "border-b border-cardline/60 align-top last:border-b-0",
-                  i % 2 === 1 && "bg-navy-50/30",
-                )}
-              >
-                <td className="py-3 pl-4 pr-3 text-navy">{r.canonical_description}</td>
-                <td className="py-3 pr-3 font-mono text-navy">{r.current_hts_code_8}</td>
-                <td className="py-3 pr-3">
-                  <input
-                    value={edit}
-                    onChange={(e) =>
-                      setEdits((prev) => ({ ...prev, [r.sku]: e.target.value }))
-                    }
-                    className={classNames(
-                      "w-40 rounded-md border bg-white px-2 py-1 font-mono text-xs",
-                      valid ? "border-cardline" : "border-warn/60",
-                    )}
-                    placeholder="XXXX.XX.XX.XX"
-                  />
-                  {!valid && (
-                    <div className="mt-0.5 text-[10px] text-warn">10-digit dotted form required</div>
+              <>
+                <tr
+                  key={r.sku}
+                  className={classNames(
+                    "border-b border-cardline/60 align-top last:border-b-0 transition-colors",
+                    i % 2 === 1 && "bg-navy-50/30",
+                    open && "bg-accent-50/40",
                   )}
-                </td>
-                <td className="py-3 pr-3 text-[11px] text-muted">
-                  {new Date(r.last_classified_at).toLocaleString()}
-                </td>
-                <td className="py-3 pr-4">
-                  <div className="flex items-center gap-2">
+                >
+                  <td className="py-3 pl-4 pr-3 text-navy">
                     <button
-                      disabled={!valid || isBusy}
-                      onClick={() =>
-                        confirm(r.canonical_description, edit, dirty ? "correct" : "confirm")
-                      }
-                      className={classNames(
-                        "rounded-md px-3 py-1.5 text-xs font-semibold transition",
-                        dirty
-                          ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                          : "bg-accent text-white hover:bg-accent-700",
-                        (!valid || isBusy) && "cursor-not-allowed opacity-50",
-                      )}
+                      onClick={() => setOpenSku(open ? null : r.sku)}
+                      className="flex items-start gap-1.5 text-left hover:text-accent-700"
                     >
-                      {dirty ? "Save correction" : "Confirm"}
+                      <span className={classNames("mt-0.5 shrink-0 text-muted transition", open && "rotate-90")}>›</span>
+                      <span>{r.canonical_description}</span>
                     </button>
-                    {r.source === "broker" && !dirty && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-accent-700">
-                        signed
-                      </span>
-                    )}
-                  </div>
-                </td>
-              </tr>
+                  </td>
+                  <td className="py-3 pr-3 font-mono text-navy">{r.current_hts_code_8}</td>
+                  <td className="py-3 pr-3">
+                    <input
+                      value={edit}
+                      onChange={(e) => setEdits((prev) => ({ ...prev, [r.sku]: e.target.value }))}
+                      className={classNames(
+                        "w-40 rounded-md border bg-white px-2 py-1 font-mono text-xs",
+                        valid ? "border-cardline" : "border-warn/60",
+                      )}
+                      placeholder="XXXX.XX.XX.XX"
+                    />
+                    {!valid && <div className="mt-0.5 text-[10px] text-warn">10-digit dotted form required</div>}
+                  </td>
+                  <td className="py-3 pr-3 text-[11px] text-muted">{new Date(r.last_classified_at).toLocaleString()}</td>
+                  <td className="py-3 pr-4">
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={!valid || isBusy}
+                        onClick={() => confirm(r.canonical_description, edit, dirty ? "correct" : "confirm")}
+                        className={classNames(
+                          "rounded-md px-3 py-1.5 text-xs font-semibold transition",
+                          dirty ? "bg-amber-100 text-amber-800 hover:bg-amber-200" : "bg-accent text-white hover:bg-accent-700",
+                          (!valid || isBusy) && "cursor-not-allowed opacity-50",
+                        )}
+                      >
+                        {dirty ? "Save correction" : "Confirm"}
+                      </button>
+                      {r.source === "broker" && !dirty && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-accent-700">signed</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                {open && (
+                  <tr key={`${r.sku}-d`} className="border-b border-cardline bg-navy-50/40">
+                    <td colSpan={5} className="px-4 py-4">
+                      <div className="grid gap-4 text-[11px] md:grid-cols-3">
+                        <div>
+                          <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">SKU record</div>
+                          <dl className="mt-1 space-y-0.5">
+                            <BRow k="Full HTS" v={r.current_hts_code} mono />
+                            <BRow k="Status" v={r.source === "broker" ? "Broker-confirmed" : "Pending review"} />
+                            <BRow k="Last classified" v={new Date(r.last_classified_at).toLocaleString()} />
+                          </dl>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                            What this does
+                          </div>
+                          <p className="mt-1 leading-relaxed text-navy">
+                            {r.source === "broker" ? (
+                              <>
+                                A licensed broker has signed off on this classification. On the importer&apos;s next
+                                shipment of this SKU, the classifier receives <span className="font-mono">{r.current_hts_code_8}</span>{" "}
+                                as an authoritative prior — it defaults to this code instead of re-deriving from
+                                scratch, so the same SKU is classified the same way every time. Editing the code
+                                above re-signs the record with the correction.
+                              </>
+                            ) : (
+                              <>
+                                The agent proposed this classification and it is awaiting broker review. Confirm to
+                                add the broker&apos;s signature, or edit the code and save a correction. Either way the
+                                decision is written to this importer&apos;s SKU memory and becomes the prior for the next
+                                shipment.
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             );
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function BRow({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="w-28 shrink-0 text-muted">{k}</dt>
+      <dd className={classNames("text-navy", mono && "font-mono")}>{v}</dd>
     </div>
   );
 }

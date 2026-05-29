@@ -19,13 +19,38 @@
 
 import { chromium, type Browser, type Page } from "playwright-core";
 import { promises as fs } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-// Playwright's "chromium install" produces a couple of binaries here. We
-// prefer the full chrome over headless_shell because download events fire
-// reliably on the former. The path is environment-pinned for the demo.
-const CHROME_BINARY = "/opt/pw-browsers/chromium-1223/chrome-linux64/chrome";
+// The Playwright browser bundle layout shifts between revisions
+// (chromium-1223/chrome-linux64/chrome, chromium-1194/chrome-linux/chrome,
+// headless_shell variants…). Hardcoding one path breaks across container
+// restarts, so we discover whatever chrome/headless_shell binary is present.
+function discoverChromeBinary(): string | undefined {
+  const explicit = process.env.PW_CHROME_BINARY;
+  if (explicit && existsSync(explicit)) return explicit;
+  const root = "/opt/pw-browsers";
+  if (!existsSync(root)) return undefined;
+  const candidates: string[] = [];
+  for (const dir of readdirSync(root)) {
+    if (!dir.startsWith("chromium")) continue;
+    // Common layouts under each revision dir.
+    for (const rel of ["chrome-linux64/chrome", "chrome-linux/chrome", "chrome-linux/headless_shell"]) {
+      const p = path.join(root, dir, rel);
+      if (existsSync(p)) candidates.push(p);
+    }
+  }
+  // Prefer full chrome (download events fire reliably) over headless_shell,
+  // and the newest revision.
+  candidates.sort((a, b) => {
+    const fullA = a.includes("headless_shell") ? 0 : 1;
+    const fullB = b.includes("headless_shell") ? 0 : 1;
+    if (fullA !== fullB) return fullB - fullA;
+    return b.localeCompare(a);
+  });
+  return candidates[0];
+}
 
 export type StepEvent =
   | { type: "step"; index: number; action: string; narration: string; screenshot_b64?: string }
@@ -68,8 +93,10 @@ export async function runAceBrowserAgent(opts: AceRunOpts): Promise<void> {
   let downloads = 0;
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ace-agent-"));
   try {
+    const chromeBinary = discoverChromeBinary();
     browser = await chromium.launch({
-      executablePath: CHROME_BINARY,
+      // If discovery found nothing, fall back to Playwright's own resolution.
+      ...(chromeBinary ? { executablePath: chromeBinary } : {}),
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });

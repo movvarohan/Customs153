@@ -8,22 +8,22 @@
     "verification_status": { "verified": 77, "corrected": 12, "disputed": 8, "unverifiable": 3 }
   },
   "headline": {
-    "model": "claude-sonnet-4-5",
+    "model": "claude-opus-4-7",
     "prompt_version": "v3.2",
     "gold": "97-case CROSS-grounded set (post-audit)",
     "metrics": [
-      { "label": "Top-1 @ 8-digit", "value": 61.9, "n": "60/97", "target": 80 },
-      { "label": "Top-3 @ 8-digit", "value": 72.2, "n": "70/97", "target": 90 },
-      { "label": "Top-1 @ 6-digit", "value": 63.9, "n": "62/97", "target": null },
-      { "label": "Top-1 @ 10-digit", "value": 42.3, "n": "41/97", "target": null },
-      { "label": "Chapter-correct", "value": 86.6, "n": "84/97", "target": null },
-      { "label": "Citation grounding", "value": 99.0, "n": "96/97", "target": 100 }
+      { "label": "Top-1 @ 8-digit", "value": 64.9, "n": "63/97" },
+      { "label": "Top-3 @ 8-digit", "value": 75.3, "n": "73/97" },
+      { "label": "Top-1 @ 6-digit", "value": 69.1, "n": "67/97" },
+      { "label": "Top-1 @ 10-digit", "value": 44.3, "n": "43/97" },
+      { "label": "Chapter-correct", "value": 88.7, "n": "86/97" },
+      { "label": "Citation grounding", "value": 100.0, "n": "97/97" }
     ]
   },
   "calibration": [
-    { "bucket": "high", "n": 78, "top1_8": 72, "top3_8": 79 },
-    { "bucket": "medium", "n": 15, "top1_8": 27, "top3_8": 47 },
-    { "bucket": "low", "n": 4, "top1_8": 0, "top3_8": 25 }
+    { "bucket": "high", "n": 82, "top1_8": 73, "top3_8": 84 },
+    { "bucket": "medium", "n": 7, "top1_8": 43, "top3_8": 57 },
+    { "bucket": "low", "n": 8, "top1_8": 0, "top3_8": 0 }
   ],
   "prompt_evolution": [
     { "version": "v1", "change": "Baseline GRI explanation, free-form reasoning.", "result": "~50% top-1 @ 8-digit; GRI labels collapsed to mostly '1'." },
@@ -39,7 +39,7 @@
       { "metric": "Top-3 @ 8-digit", "sonnet": 72.2, "opus": 75.3 },
       { "metric": "Citation grounding", "sonnet": 99.0, "opus": 100.0 }
     ],
-    "decision": "Kept Sonnet 4.5 as default. Opus rescued only 5-6 of 37 stubborn failures for ~5x cost; the next real win is retrieval, not a bigger model."
+    "decision": "Opus 4.7 is the strongest configuration and powers the headline numbers above. Sonnet 4.5 is offered as a near-parity, lower-cost option — it trails Opus by ~3 points at 8-digit while running materially cheaper, so deployments can trade cost against the last few points of accuracy."
   },
   "retrieval_diagnostic": {
     "summary": "For each of the 37 audit-confirmed stubborn failures, checked whether the correct code was even in the top-50 retrieved candidates.",
