@@ -1284,4 +1284,69 @@ apiRoute.post("/reroute-intel", async (c) => {
   }
 });
 
+// ── POST /api/quote ──────────────────────────────────────────────────────
+// Instant landed-cost quote: classify a product, price the full duty stack,
+// estimate freight, and return a shareable total landed cost.
+const QUOTE_ISO2: Record<string, string> = {
+  china: "CN", vietnam: "VN", india: "IN", mexico: "MX", thailand: "TH",
+  malaysia: "MY", indonesia: "ID", taiwan: "TW", "south korea": "KR", korea: "KR",
+  japan: "JP", germany: "DE", italy: "IT", "united states": "US", usa: "US", cambodia: "KH", bangladesh: "BD",
+};
+function toIso2(s: string): string {
+  const k = s.trim().toLowerCase();
+  return QUOTE_ISO2[k] ?? (s.length === 2 ? s.toUpperCase() : s.toUpperCase().slice(0, 2));
+}
+const QuoteBody = z.object({
+  description: z.string().min(3),
+  customs_value_usd_cents: z.number().int().positive(),
+  country_of_origin: z.string().min(2),
+  transport_mode: z.enum(["ocean", "air"]).default("ocean"),
+});
+apiRoute.post("/quote", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = QuoteBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  const { description, customs_value_usd_cents: value, transport_mode } = parsed.data;
+  const iso2 = toIso2(parsed.data.country_of_origin);
+
+  try {
+    const { result } = await classify(ctx, { description, country_of_origin: iso2 });
+    const duty = await calculateDuty(ctx, {
+      hts_code: result.hts_code,
+      country_of_origin: iso2,
+      customs_value_usd_cents: value,
+      transport_mode,
+    });
+    // Rough freight estimate (clearly an estimate; real quote depends on lane,
+    // volume, and Incoterms). Ocean ~2.5% of value (min $200); air ~9% (min $350).
+    const freight = transport_mode === "air"
+      ? Math.max(35000, Math.round(value * 0.09))
+      : Math.max(20000, Math.round(value * 0.025));
+    const landed = value + duty.total_duty_usd_cents + freight;
+    return c.json({
+      classification: {
+        hts_code: result.hts_code,
+        hts_code_8: result.hts_code_8,
+        confidence: result.confidence,
+        precision_level: result.precision_level,
+        gri_rule_applied: result.gri_rule_applied,
+        citations: result.citations,
+        reasoning: result.reasoning,
+        alternative_codes_considered: result.alternative_codes_considered,
+      },
+      country_of_origin: iso2,
+      transport_mode,
+      customs_value_usd_cents: value,
+      duty,
+      freight_estimate_usd_cents: freight,
+      landed_cost_usd_cents: landed,
+      effective_duty_rate: value > 0 ? duty.total_duty_usd_cents / value : 0,
+    });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
 void z; // keep zod import even if no top-level uses inside this file
