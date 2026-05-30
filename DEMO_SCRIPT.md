@@ -1,4 +1,4 @@
-# Customs Agent Suite — Demo Script (≈4:55)
+# Customs Agent Suite — Demo Script (≈5:20)
 
 Built to answer the four required questions, with the live product as the backbone.
 Read the **SAY** lines as voiceover while you perform the **SHOW** actions. Keep the screen moving.
@@ -11,7 +11,7 @@ Read the **SAY** lines as voiceover while you perform the **SHOW** actions. Keep
 | **Q2** | How it works — [1] research/method · [2] architecture · [3] agents | 0:50 – 2:50 |
 | **★** | The intelligence layer — our unique edge (sourcing, factories, map, simulation) | 2:50 – 3:40 |
 | **Q3** | Use cases, impact, who uses it | 3:40 – 4:15 |
-| **Q4** | What we'd add next | 4:15 – 4:55 |
+| **Q4** | What we'd add next — business **and** platform/technical | 4:15 – 5:20 |
 
 > **Stat to verify before you submit:** the "unclaimed refunds" figures below (≈$80B/yr in U.S. duties; billions in unclaimed overpayments + drawback) are *industry estimates* — grab a citable source (e.g., CBP trade statistics, a drawback-industry report) and put it on screen.
 
@@ -66,11 +66,15 @@ Read the **SAY** lines as voiceover while you perform the **SHOW** actions. Keep
 
 ---
 
-## Q4 — What we'd add next  *(4:15 – 4:55)*
+## Q4 — What we'd add next  *(4:15 – 5:20)*
 
-**SHOW:** **Copilot** — type *"What's the HTS code and landed duty for Bluetooth earbuds from China?"*, send, let it answer; end on the home dashboard.
+**SHOW:** **Copilot** — type *"What's the HTS code and landed duty for Bluetooth earbuds from China?"*, send, let it answer. While narrating the *platform* part, optionally flash the repo's `src/core` / `src/adapters` structure or an architecture diagram. End on the home dashboard.
 
-**SAY:** "Where it goes next. Near-term, we bring **filing fully in-house** with our own broker license and direct **ACE integration**, add real-time **carrier tracking**, and automate **drawback and export filings**. The long-term moat is a **data flywheel**: every broker correction makes our gold eval set larger and more proprietary — and eventually that becomes the training data to **fine-tune our own specialized customs model**. And it all collapses into a copilot you can just talk to — it classifies, prices, and **cites the actual CBP rulings** behind its answer. The work of a customs broker, done by AI, certified by a human. **That's Customs Agent Suite.**"
+**SAY (business front):** "Where it goes next, on two fronts. On the **business** side, we bring filing fully in-house with our own broker license and direct **ACE and ABI integration**, add real-time **carrier tracking**, and automate **duty drawback and export filings** — each one a new revenue line on top of the same engine."
+
+**SAY (platform / technical front):** "On the **platform** side, we built for this from day one. Because the business logic sits behind **typed interfaces**, shipping to **Cloudflare** is a port, not a rewrite — Workers for the API, D1 and Vectorize for data and retrieval, **Durable Objects** for per-shipment agent state and per-customer memory, and **Workflows** to run the lifecycle as a durable, resumable pipeline instead of a timer. We harden the **evaluation harness into a CI gate** — no prompt or model change ships unless it beats the benchmark — with full **observability** on every agent's tool calls and confidence. We drive **cost and latency** down with model routing — Haiku for the cheap calls, Opus for the hard ones — plus prompt caching and the batch API for the refund fan-out. And we tighten the **retrieval**: hybrid keyword-plus-vector search with reranking, over a corpus that auto-syncs as the tariff tables and rulings change. Then the **data flywheel** closes the loop — every broker correction grows a proprietary, labeled dataset we use to **distill a small, fine-tuned classifier**: cheaper, faster, and ours."
+
+**SAY (close):** "And it all collapses into a copilot you can just talk to — it classifies, prices, and **cites the actual CBP rulings** behind its answer. The work of a customs broker, done by AI, certified by a human. **That's Customs Agent Suite.**"
 
 ---
 
