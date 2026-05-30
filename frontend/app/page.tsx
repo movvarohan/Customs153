@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { CommandCenter } from "@/components/CommandCenter";
 
 export default function Landing() {
   return (
-    <div className="space-y-20">
+    <div className="space-y-16">
       {/* Hero */}
       <section className="grid items-center gap-12 pt-6 md:grid-cols-[1.1fr_0.9fr]">
         <div>
@@ -72,6 +73,9 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      {/* Live operations dashboard */}
+      <CommandCenter />
 
       {/* Why now */}
       <section>
