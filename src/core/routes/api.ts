@@ -34,6 +34,7 @@ import { runTariffSimulation } from "@/core/lib/tariff-simulator";
 import { analyzeSourcing } from "@/core/agents/sourcing-intel";
 import { analyzeReroute } from "@/core/agents/reroute-intel";
 import { buildBrokerQueue } from "@/core/lib/broker-queue";
+import { computeDeadlines } from "@/core/lib/deadlines";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import {
   MOCK_ENTRIES,
@@ -206,6 +207,21 @@ apiRoute.get("/samples/entries", async (c) => {
     return c.body(text);
   } catch {
     return c.json({ error: "sample entries not available" }, 404);
+  }
+});
+
+// ── GET /api/deadlines ────────────────────────────────────────────────────
+// Liquidation / PSC / protest deadline tracking over the importer's historical
+// entries. Deterministic — derived from each entry's date.
+apiRoute.get("/deadlines", async (c) => {
+  const p = path.resolve(process.cwd(), "data/sample-entries/amazon-fba.json");
+  try {
+    const text = await fs.readFile(p, "utf8");
+    const data = JSON.parse(text) as { importer?: string; entries: Parameters<typeof computeDeadlines>[1] };
+    const result = computeDeadlines(data.importer ?? "Importer", data.entries, new Date());
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
 
