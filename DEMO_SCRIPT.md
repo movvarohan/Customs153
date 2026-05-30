@@ -17,27 +17,27 @@ Read the **SAY** lines as voiceover while you perform the **SHOW** actions. Keep
 
 ---
 
-# ▶ 3-MINUTE CUT  *(~510 words ≈ 3:00–3:10)*
+# ▶ 3-MINUTE CUT  *(~535 words ≈ 3:00–3:10 at a confident pace)*
 
 Written as flowing, plain sentences so it's easy to follow. Read at a steady, confident pace (~165 wpm) and use the screen transitions as natural breaths. SHOW cues are in **[brackets]** and aren't spoken. The fuller ~5-minute version is below if you want more detail.
 
 **[SHOW: Home — hero + the "Why now" stats]**  *(Q1)*
-"Every year, American importers pay over eighty billion dollars in tariffs, and billions in refunds they're owed go unclaimed, because no one is looking. We built Customs Agent Suite to fix three problems. First, classifying a product is real legal reasoning, and forty-two percent of penalties come from a wrong code. Second, only about fourteen thousand licensed brokers serve millions of importers, so the expertise can't scale. Third, the 2025 tariff changes left small importers unable to keep up. Our key insight: you can't legally remove the broker, so we let the AI do the work and have the broker certify it."
+"Every year, American importers pay over eighty billion dollars in tariffs, and billions in refunds they're owed go unclaimed, because no one is looking. We built Customs Agent Suite to fix three problems. First, classification is real legal reasoning, and forty-two percent of penalties come from a wrong code. Second, only about fourteen thousand licensed brokers serve millions of importers — the expertise can't scale. Third, the 2025 tariff surge left small importers unable to keep up. Our insight: you can't legally remove the broker, so we let the AI do the work and have the broker certify it."
 
 **[SHOW: Methodology — accuracy table + agent pipeline]**  *(Q2: research + architecture)*
-"So how does it work? At its core, this is a retrieval system, not a model we trained. We embedded the entire U.S. tariff schedule and tens of thousands of binding rulings into a vector database, so the agent reasons over the real law, not its own memory. We built our own benchmark from real rulings to grade every change, so every classification ships with a citation you can check. And the duty math runs on a separate, deterministic engine, so the dollar amounts are always exact and auditable."
+"So how does it work? At its core, this is a retrieval system, not a model we trained. We embedded the entire U.S. tariff schedule and tens of thousands of binding rulings into a vector database, so it reasons over the real law, not memory. We grade it against our own benchmark of real rulings, so every classification ships with a citation you can check. And the duty math runs on a separate, deterministic engine, so the dollar amounts are always exact and auditable."
 
 **[SHOW: Workflow auto-pilot → Broker queue: approve a filing, expand the duty stack]**  *(Q2: agents)*
-"On top sits a team of ten specialized agents. The hardest codes are settled by an adversarial debate — one argues for a code, another attacks it, a third decides — then it's checked against live customs rulings. The whole lifecycle runs on autopilot: as you can see, with no clicks, it has already drafted the security filing and the customs entry and handed them to a broker for one informed approval."
+"On top sits a team of ten specialized agents. The hardest codes go through an adversarial debate — one agent argues, another attacks, a third decides — then a check against live customs rulings. The whole lifecycle runs on autopilot: as you can see, with no clicks, it has already drafted the security filing and the customs entry and handed them to a broker for one approval."
 
 **[SHOW: Policy Lab reroute economics → Catalog landed-cost map → Factory Finder cards]**  *(the unique edge)*
-"What really sets us apart: we didn't stop at filing — we built a strategic intelligence layer on top. The Policy Lab simulates any tariff change across a whole catalog in one click. The sourcing engine maps where production could move and what it would truly cost, and the Factory Finder vets specific factories — which are taking new clients, and which are a bridge versus a long-term partner. Every other tool answers, how do I file this. We answer the bigger question: how do I protect my margins as the rules change."
+"What really sets us apart: we didn't stop at filing — we built a strategic intelligence layer on top. The Policy Lab simulates any tariff change across a whole catalog in one click. The sourcing engine maps where production could move and what it would cost, and the Factory Finder vets specific factories — even which are taking new clients. Every other tool answers, how do I file this. We answer the bigger question: how do I protect my margins as the rules change."
 
 **[SHOW: Command center]**  *(Q3)*
 "It's built for Amazon and direct-to-consumer brands importing from China — too small for a great broker, big enough to overpay. They recover five to fifteen percent of their duty, never miss a refund deadline, and get supply-chain intelligence only the largest companies could afford."
 
 **[SHOW: Copilot answering a question]**  *(Q4 + close)*
-"From here we go two directions. On the business side, we bring filing fully in-house with our own broker's license, and automate drawback and export filings. On the technical side, our north star is to make classification provably correct and self-improving: a neuro-symbolic engine that produces a machine-checkable proof for every code — turning reasonable care into a verifiable artifact — and a model that trains on real customs outcomes — did the broker accept it, did customs clear it — so it learns to file better than a human over time. The work of a customs broker, done by AI and certified by a human. That's Customs Agent Suite."
+"From here we go two directions. On the business side, we bring filing in-house with our own broker's license, and automate drawback and export filings. On the technical side, the north star is classification that's *provable* and *self-improving*. Today the AI explains its reasoning; next, we want it to **prove** it — to lay out, step by step, that it followed customs law, and attach that proof to the entry. That changes the game: compliance stops being a judgment call you defend *after* an audit, and becomes something you verify *before* you file — so the audit becomes a formality. And it learns from real outcomes — every code a broker accepts, every entry customs clears without change — so it gets sharper with each shipment, and over time files more accurately than any single broker could. The work of a customs broker, done by AI and certified by a human. That's Customs Agent Suite."
 
 ---
 
