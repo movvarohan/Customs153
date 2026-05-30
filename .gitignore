@@ -17,3 +17,7 @@ data/cross-rulings/*
 data/hts/raw/*
 data/hts/parsed/*
 data/hts/notes/*
+
+# Generated demo videos (kept local, not versioned)
+*.mp4
+*.webm
