@@ -80,7 +80,20 @@ function jitter(description: string): number {
 
 export async function buildBrokerQueue(ctx: AppContext, customerId: string): Promise<BrokerQueue> {
   const table = await loadTariffRates(ctx);
-  const rows = await listSkuMemory(ctx, customerId, 100);
+  const allRows = await listSkuMemory(ctx, customerId, 100);
+
+  // Collapse to one line per product: a broker-confirmed decision supersedes the
+  // agent's earlier prediction (same as lookupSkuMemory). Without this, approving
+  // a line leaves the agent row behind and it never leaves "pending review".
+  const byDesc = new Map<string, (typeof allRows)[number]>();
+  for (const r of allRows) {
+    const key = r.canonical_description.trim().toLowerCase();
+    const existing = byDesc.get(key);
+    if (!existing || (existing.source === "agent" && r.source === "broker")) {
+      byDesc.set(key, r);
+    }
+  }
+  const rows = [...byDesc.values()];
 
   const lines: BrokerQueueLine[] = [];
   for (const r of rows) {

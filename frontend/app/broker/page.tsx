@@ -357,10 +357,24 @@ interface CrossResult {
   };
 }
 
+function cleanError(raw: string): string {
+  // Anthropic errors arrive as "400 {json}". Extract the human message, and
+  // special-case the most common operational failure (no API credits).
+  if (/credit balance is too low/i.test(raw)) return "Anthropic API credits exhausted — add credits to run live rulings checks.";
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const j = JSON.parse(m[0]) as { error?: { message?: string } };
+      if (j.error?.message) return j.error.message;
+    } catch { /* fall through */ }
+  }
+  return raw.slice(0, 160);
+}
+
 function CrossPanel({ cross }: { cross: null | "loading" | CrossResult }) {
   if (cross === null) return <p className="text-[11px] text-muted">Query CBP&apos;s CROSS rulings database to check this code against precedent.</p>;
   if (cross === "loading") return <p className="flex items-center gap-1.5 text-[11px] text-muted"><span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />Searching CBP CROSS rulings…</p>;
-  if (cross.error || !cross.defense) return <p className="text-[11px] text-warn">{(cross.error ?? "no verdict returned").slice(0, 160)}</p>;
+  if (cross.error || !cross.defense) return <p className="text-[11px] text-warn">{cleanError(cross.error ?? "no verdict returned")}</p>;
   const d = cross.defense;
   const agree = d.agrees_with_predicted;
   return (

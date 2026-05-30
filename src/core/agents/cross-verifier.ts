@@ -108,8 +108,15 @@ async function fetchJson(url: string): Promise<unknown> {
 
 async function crossSearch(term: string, pageSize = 12): Promise<CrossSearchHit[]> {
   const url = `${CROSS_BASE}/search?term=${encodeURIComponent(term)}&collection=ALL&pageSize=${pageSize}`;
-  const d = (await fetchJson(url)) as { rulings?: CrossSearchHit[] };
-  return d.rulings ?? [];
+  try {
+    const d = (await fetchJson(url)) as { rulings?: CrossSearchHit[] };
+    return d.rulings ?? [];
+  } catch {
+    // CBP CROSS unreachable (network/timeout) — degrade to no hits rather than
+    // failing the whole verification. The model then reports low-confidence
+    // "no rulings retrieved" instead of the endpoint 500-ing.
+    return [];
+  }
 }
 
 async function crossRulingText(num: string): Promise<string> {
