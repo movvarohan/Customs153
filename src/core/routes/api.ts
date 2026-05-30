@@ -39,6 +39,7 @@ import { computeCoordination } from "@/core/lib/coordination";
 import { assembleIsf, assembleEntry, draftOutreach } from "@/core/agents/coordinator";
 import { insertFiling, listFilings, approveFiling } from "@/core/lib/filings";
 import { buildWorkflow, runWorkflow } from "@/core/lib/workflow";
+import { getSchedulerStatus, setSchedulerEnabled } from "@/core/lib/scheduler";
 import { findFactories } from "@/core/agents/factory-finder";
 import { deepDiveFactory } from "@/core/agents/factory-deepdive";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
@@ -339,6 +340,16 @@ apiRoute.get("/workflow", async (c) => {
 apiRoute.post("/workflow/run", async (c) => {
   const ctx = c.var.ctx;
   return c.json(await runWorkflow(ctx));
+});
+
+// Auto-pilot scheduler: status + on/off toggle.
+apiRoute.get("/workflow/scheduler", (c) => c.json(getSchedulerStatus()));
+apiRoute.post("/workflow/scheduler", async (c) => {
+  let body: unknown = {};
+  try { body = await c.req.json(); } catch { /* default */ }
+  const parsed = z.object({ enabled: z.boolean() }).safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  return c.json(setSchedulerEnabled(parsed.data.enabled));
 });
 
 // ── POST /api/process-invoice ─────────────────────────────────────────────

@@ -6,6 +6,7 @@
 import { serve } from "@hono/node-server";
 import { buildLocalContext } from "@/adapters/local";
 import { buildApp } from "@/core/routes";
+import { startScheduler } from "@/core/lib/scheduler";
 
 async function main(): Promise<void> {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
@@ -39,6 +40,11 @@ async function main(): Promise<void> {
     console.log(`customs-agent listening on http://localhost:${info.port}`);
     console.log(`  GET  /health`);
   });
+
+  // Workflow auto-pilot: fire due ISF/entry drafts on an interval.
+  const schedulerMs = Number(process.env.WORKFLOW_INTERVAL_MS ?? 30_000);
+  startScheduler(ctx, { intervalMs: schedulerMs });
+  console.log(`  workflow auto-pilot every ${Math.round(schedulerMs / 1000)}s`);
 }
 
 main().catch((err) => {

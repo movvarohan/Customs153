@@ -22,12 +22,16 @@ interface WorkflowState {
   pending_filings: Filing[];
 }
 interface Fired { shipment_ref: string; type: "isf" | "entry"; title: string; readiness_pct: number }
+interface RunRecord { at: string; fired: number; items: { shipment_ref: string; type: string }[] }
+interface Sched { enabled: boolean; interval_seconds: number; last_run_at: string | null; next_run_at: string | null; history: RunRecord[] }
 
 export default function WorkflowPage() {
   const [w, setW] = useState<WorkflowState | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [fired, setFired] = useState<Fired[] | null>(null);
+  const [sched, setSched] = useState<Sched | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   const load = useCallback(async () => {
     try {
@@ -36,7 +40,30 @@ export default function WorkflowPage() {
       setW(await r.json());
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  const loadSched = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/workflow/scheduler`, { cache: "no-store" });
+      if (r.ok) setSched(await r.json());
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { load(); loadSched(); }, [load, loadSched]);
+  // Poll so the board + auto-pilot status reflect background runs live.
+  useEffect(() => {
+    const id = setInterval(() => { void load(); void loadSched(); }, 4000);
+    return () => clearInterval(id);
+  }, [load, loadSched]);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const toggleSched = async () => {
+    if (!sched) return;
+    const r = await fetch(`${API_BASE_URL}/api/workflow/scheduler`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: !sched.enabled }),
+    });
+    if (r.ok) setSched(await r.json());
+  };
 
   const run = async () => {
     setRunning(true); setFired(null); setErr(null);
@@ -88,6 +115,46 @@ export default function WorkflowPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Auto-pilot */}
+      {sched && (
+        <div className="rounded-card border border-cardline bg-white p-4 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={toggleSched}
+                role="switch"
+                aria-checked={sched.enabled}
+                className={classNames("relative inline-flex h-6 w-11 items-center rounded-full transition", sched.enabled ? "bg-accent" : "bg-navy-100")}
+              >
+                <span className={classNames("inline-block h-4 w-4 transform rounded-full bg-white transition", sched.enabled ? "translate-x-6" : "translate-x-1")} />
+              </button>
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-navy">
+                  {sched.enabled && <span className="h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />}
+                  Auto-pilot {sched.enabled ? "on" : "off"}
+                </div>
+                <div className="text-[11px] text-muted">
+                  {sched.enabled ? (
+                    <>Fires the pipeline every {sched.interval_seconds}s automatically · {sched.last_run_at ? `last run ${rel(sched.last_run_at, now)}` : "first run pending"}{sched.next_run_at ? ` · next in ${countdown(sched.next_run_at, now)}` : ""}</>
+                  ) : (
+                    <>Paused — drafts won&apos;t fire until you turn it back on or click Run automation.</>
+                  )}
+                </div>
+              </div>
+            </div>
+            {sched.history.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {sched.history.slice(0, 4).map((r, i) => (
+                  <span key={i} className={classNames("rounded-full border px-2 py-0.5 text-[10px]", r.fired > 0 ? "border-accent/40 bg-accent-50/40 text-accent-700" : "border-cardline text-muted")}>
+                    {r.at.slice(11, 19)} · {r.fired > 0 ? `fired ${r.fired}` : "up to date"}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -188,4 +255,15 @@ function ActionBadge({ a }: { a: WAction }) {
 
 function stageLabel(stages: Stage[], key: string): string {
   return stages.find((s) => s.key === key)?.label ?? key;
+}
+
+function rel(iso: string, now: number): string {
+  const secs = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  const m = Math.floor(secs / 60);
+  return `${m}m ${secs % 60}s ago`;
+}
+function countdown(iso: string, now: number): string {
+  const secs = Math.max(0, Math.round((new Date(iso).getTime() - now) / 1000));
+  return `${secs}s`;
 }
