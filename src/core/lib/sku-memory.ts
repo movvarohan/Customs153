@@ -11,6 +11,7 @@
 // on the importer of record.
 
 import type { AppContext } from "@/core/app-context";
+import { seedClassificationTraces } from "./seed-classification-traces";
 
 const DEMO_CUSTOMER_ID = "demo-customer";
 const DEMO_CUSTOMER_NAME = "Atlas Retail Holdings LLC";
@@ -72,7 +73,13 @@ export async function seedSkuMemoryIfEmpty(ctx: AppContext, customerId: string):
     .prepare("SELECT COUNT(*) AS n FROM sku_master WHERE customer_id = ?")
     .bind(customerId)
     .first<{ n: number }>();
-  if (existing && Number(existing.n) > 0) return;
+  if (existing && Number(existing.n) > 0) {
+    // SKUs already exist — but a fresh DB before this commit will have null
+    // classification_id on every seed row. Backfill the hand-crafted traces
+    // for any SKU that hasn't been wired up yet (idempotent).
+    await seedClassificationTraces(ctx, customerId);
+    return;
+  }
   for (const r of SEED_ROWS) {
     await upsertSkuMemory(ctx, {
       customer_id: customerId,
@@ -82,6 +89,7 @@ export async function seedSkuMemoryIfEmpty(ctx: AppContext, customerId: string):
       source: r.source,
     });
   }
+  await seedClassificationTraces(ctx, customerId);
 }
 
 /**

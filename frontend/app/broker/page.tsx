@@ -31,6 +31,8 @@ interface Line {
 interface CareRecord {
   id: string;
   gri_rule_applied: string | null;
+  confidence: "low" | "medium" | "high" | null;
+  precision_level: string | null;
   product_description: string | null;
   candidate_count: number;
   top_candidates: { hts_code: string; score: number; description: string }[];
@@ -380,6 +382,10 @@ function Drawer({ l, edit, dirty, setEdits }: { l: Line; edit: string; dirty: bo
             <KV k="Full HTS" v={dirty ? `${l.hts_code} → ${edit}` : l.hts_code} mono />
             <KV k="Chapter" v={l.chapter} />
             <KV k="Status" v={l.source === "broker" ? "Broker-confirmed" : "Pending review"} />
+            <KV
+              k="Confidence"
+              v={`${l.source === "broker" ? "Signed" : `${Math.round(l.confidence * 100)}% (${l.confidence >= 0.9 ? "high" : l.confidence >= 0.75 ? "medium" : "low"})`}`}
+            />
             <KV k="Last classified" v={new Date(l.last_classified_at).toLocaleString()} />
           </dl>
         </div>
@@ -416,15 +422,35 @@ function Drawer({ l, edit, dirty, setEdits }: { l: Line; edit: string; dirty: bo
       {/* Reasonable-care record — the four legal steps the agent followed.
           Read this BEFORE approving. */}
       <div className="mt-5 rounded-md border border-cardline bg-white p-3">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-navy px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-white">
             Reasonable-care record
           </div>
-          <div className="text-[10px] text-muted">
-            Review the four legal steps before approving. {typeof record === "object" && record && "gri_rule_applied" in record && record.gri_rule_applied && (
-              <span className="ml-1 font-semibold text-navy">GRI {record.gri_rule_applied}</span>
-            )}
-          </div>
+          {typeof record === "object" && record && "gri_rule_applied" in record && (
+            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+              <span className="rounded bg-navy-50/60 px-1.5 py-0.5 font-semibold text-navy ring-1 ring-inset ring-cardline">
+                GRI {record.gri_rule_applied ?? "—"}
+              </span>
+              {record.confidence && (
+                <span
+                  className={classNames(
+                    "rounded px-1.5 py-0.5 font-semibold uppercase tracking-wider",
+                    record.confidence === "high" && "bg-accent text-white",
+                    record.confidence === "medium" && "bg-navy-100 text-navy",
+                    record.confidence === "low" && "bg-amber-100 text-amber-800",
+                  )}
+                >
+                  {record.confidence} confidence
+                </span>
+              )}
+              {record.precision_level && (
+                <span className="rounded bg-navy-50/60 px-1.5 py-0.5 text-navy ring-1 ring-inset ring-cardline">
+                  precision: {record.precision_level}-digit
+                </span>
+              )}
+              <span className="text-muted">Review the four legal steps before approving.</span>
+            </div>
+          )}
         </div>
         {record === null || record === "loading" ? (
           <p className="text-[11px] text-muted">{l.classification_id ? "Loading record…" : "No classification record on file for this line yet."}</p>
