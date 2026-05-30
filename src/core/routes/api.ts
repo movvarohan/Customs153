@@ -36,7 +36,7 @@ import { analyzeReroute } from "@/core/agents/reroute-intel";
 import { buildBrokerQueue } from "@/core/lib/broker-queue";
 import { computeDeadlines } from "@/core/lib/deadlines";
 import { computeCoordination } from "@/core/lib/coordination";
-import { assembleIsf, draftOutreach } from "@/core/agents/coordinator";
+import { assembleIsf, assembleEntry, draftOutreach } from "@/core/agents/coordinator";
 import { insertFiling, listFilings, approveFiling } from "@/core/lib/filings";
 import { findFactories } from "@/core/agents/factory-finder";
 import { deepDiveFactory } from "@/core/agents/factory-deepdive";
@@ -266,6 +266,16 @@ apiRoute.post("/coordination/draft", async (c) => {
       });
       return c.json({ kind: "isf", isf, outreach });
     }
+    if (/entry/i.test(label)) {
+      const entry = await assembleEntry(ctx, shipment);
+      const outreach = await draftOutreach(ctx, {
+        shipment,
+        party: "Importer (documents)",
+        action: "CBP entry (7501) filing",
+        purpose: `Confirm the documents needed to file the entry before arrival: ${entry.missing.join(", ")}.`,
+      });
+      return c.json({ kind: "entry", entry, outreach });
+    }
     // Pick the party + purpose from the pending action.
     let party = "Freight forwarder";
     let purpose = `Coordinate the next step (${label}) for this shipment.`;
@@ -275,9 +285,6 @@ apiRoute.post("/coordination/draft", async (c) => {
     } else if (/release/i.test(label)) {
       party = "Drayage trucker";
       purpose = "CBP has released the cargo — proceed with pickup and confirm the delivery appointment.";
-    } else if (/entry/i.test(label)) {
-      party = "Importer (documents)";
-      purpose = "Confirm the commercial invoice, packing list, and any PGA documents are in hand so the CBP entry can be filed before arrival.";
     } else if (/departs/i.test(label)) {
       party = "Ocean carrier / forwarder";
       purpose = "Confirm the cargo is loaded and the on-board date so we can finalize the entry timeline.";

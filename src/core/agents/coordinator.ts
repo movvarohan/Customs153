@@ -12,6 +12,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { AppContext } from "@/core/app-context";
 import { listSkuMemory } from "@/core/lib/sku-memory";
+import { calculateDuty, calculateEntryFees } from "@/core/agents/duty-calculator";
+import { loadTariffRates } from "@/core/lib/tariff-rates";
 import type { Shipment } from "@/core/lib/coordination";
 
 export const COORDINATOR_PROMPT_VERSION = "v1-2026-05-30";
@@ -47,16 +49,24 @@ export interface IsfDraft {
   readiness_pct: number;
 }
 
+/** Loose token match tolerant of plurals/verb forms (cables↔cable, chargers↔charger). */
+function matchScore(product: string, description: string): number {
+  const d = description.toLowerCase();
+  const tokens = product.toLowerCase().split(/[^a-z]+/).filter((t) => t.length > 3);
+  let score = 0;
+  for (const t of tokens) {
+    const stem = t.slice(0, Math.max(4, t.length - 1)); // drop trailing char for plurals
+    if (d.includes(t) || d.includes(stem)) score++;
+  }
+  return score;
+}
+
 /** Try to find an HTS 6-digit for the shipment's product from SKU memory. */
 async function htsForProduct(ctx: AppContext, product: string): Promise<string | null> {
   const rows = await listSkuMemory(ctx, "demo-customer", 100);
-  const p = product.toLowerCase();
-  const tokens = p.split(/[^a-z]+/).filter((t) => t.length > 3);
   let best: { score: number; code: string } | null = null;
   for (const r of rows) {
-    const d = r.canonical_description.toLowerCase();
-    let score = 0;
-    for (const t of tokens) if (d.includes(t)) score++;
+    const score = matchScore(product, r.canonical_description);
     if (score > 0 && (!best || score > best.score)) {
       best = { score, code: r.current_hts_code_8.replace(/\D/g, "").slice(0, 6) };
     }
@@ -88,6 +98,108 @@ export async function assembleIsf(ctx: AppContext, shipment: Shipment): Promise<
     carrier_elements: ["Vessel stow plan (carrier-filed)", "Container status messages (carrier-filed)"],
     missing,
     readiness_pct: Math.round((filled / elements.length) * 100),
+  };
+}
+
+/** Best-match full 10-digit HTS for a product from SKU memory. */
+async function hts10ForProduct(ctx: AppContext, product: string): Promise<string | null> {
+  const rows = await listSkuMemory(ctx, "demo-customer", 100);
+  let best: { score: number; code: string } | null = null;
+  for (const r of rows) {
+    const score = matchScore(product, r.canonical_description);
+    if (score > 0 && (!best || score > best.score)) best = { score, code: r.current_hts_code };
+  }
+  return best ? best.code : null;
+}
+
+/** Deterministic representative entered value for a shipment ($40k–$220k). */
+function enteredValueCents(s: Shipment): number {
+  let h = 0;
+  const key = s.id + s.product;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return (40_000 + (Math.abs(h) % 181) * 1000) * 100;
+}
+
+export interface EntryLine {
+  description: string;
+  hts_code: string;
+  country_of_origin: string;
+  value_usd_cents: number;
+  base_duty_usd_cents: number;
+  section_301_usd_cents: number;
+  section_232_usd_cents: number;
+  line_duty_usd_cents: number;
+  hts_status: "filled" | "to_confirm";
+}
+export interface EntryDraft {
+  shipment_ref: string;
+  entry_type: string;
+  port_of_entry: string;
+  importer_of_record: string;
+  ior_number: string;
+  consignee_number: string;
+  country_of_origin: string;
+  lines: EntryLine[];
+  mpf_usd_cents: number;
+  hmf_usd_cents: number;
+  total_entered_value_usd_cents: number;
+  total_duty_usd_cents: number;
+  missing: string[];
+  readiness_pct: number;
+}
+
+/** Assemble a draft CBP 7501 entry summary deterministically from a shipment. */
+export async function assembleEntry(ctx: AppContext, shipment: Shipment): Promise<EntryDraft> {
+  const origin = countryFromPort(shipment.origin_port);
+  const table = await loadTariffRates(ctx);
+  const value = enteredValueCents(shipment);
+  const hts10 = await hts10ForProduct(ctx, shipment.product);
+  const htsForCalc = hts10 ?? "9999.99.99.99";
+
+  const duty = await calculateDuty(ctx, {
+    hts_code: htsForCalc,
+    country_of_origin: origin.iso2 || "CN",
+    customs_value_usd_cents: value,
+    transport_mode: "ocean",
+    include_entry_fees: false,
+  });
+  const line: EntryLine = {
+    description: shipment.product,
+    hts_code: hts10 ?? "— (classify before filing)",
+    country_of_origin: origin.name || "—",
+    value_usd_cents: value,
+    base_duty_usd_cents: duty.base_duty_usd_cents,
+    section_301_usd_cents: duty.section_301_duty_usd_cents,
+    section_232_usd_cents: duty.section_232_duty_usd_cents,
+    line_duty_usd_cents: duty.base_duty_usd_cents + duty.section_301_duty_usd_cents + duty.section_232_duty_usd_cents,
+    hts_status: hts10 ? "filled" : "to_confirm",
+  };
+
+  const fees = calculateEntryFees(table, value, "ocean");
+  const totalDuty = line.line_duty_usd_cents + fees.mpf_usd_cents + fees.hmf_usd_cents;
+
+  const missing: string[] = ["Commercial invoice", "Packing list"];
+  if (!hts10) missing.unshift("HTS classification (no SKU-memory match)");
+  if (!origin.iso2) missing.push("Country of origin");
+  // Filled: IOR, consignee, port, entry type, country, HTS (if matched), value.
+  const filledCore = 5 + (hts10 ? 1 : 0) + (origin.iso2 ? 1 : 0);
+  const readiness_pct = Math.round((filledCore / 7) * 100);
+
+  return {
+    shipment_ref: shipment.id,
+    entry_type: "01 — Consumption",
+    port_of_entry: shipment.dest_port,
+    importer_of_record: IMPORTER.name,
+    ior_number: IMPORTER.ior_number,
+    consignee_number: IMPORTER.consignee_number,
+    country_of_origin: origin.name || "—",
+    lines: [line],
+    mpf_usd_cents: fees.mpf_usd_cents,
+    hmf_usd_cents: fees.hmf_usd_cents,
+    total_entered_value_usd_cents: value,
+    total_duty_usd_cents: totalDuty,
+    missing,
+    readiness_pct,
   };
 }
 

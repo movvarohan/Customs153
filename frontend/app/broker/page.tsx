@@ -32,13 +32,21 @@ interface Queue {
   summary: { pending: number; signed: number; flagged: number; total_value_usd_cents: number; total_duty_usd_cents: number };
   lines: Line[];
 }
+interface EntryFiling {
+  entry_type: string; port_of_entry: string; importer_of_record: string; ior_number: string; country_of_origin: string;
+  lines: { description: string; hts_code: string; value_usd_cents: number; base_duty_usd_cents: number; section_301_usd_cents: number; line_duty_usd_cents: number; hts_status: string }[];
+  mpf_usd_cents: number; hmf_usd_cents: number; total_entered_value_usd_cents: number; total_duty_usd_cents: number; missing: string[]; readiness_pct: number;
+}
 interface Filing {
   id: string;
   shipment_ref: string;
   type: string;
   status: "pending_review" | "approved";
   title: string;
-  payload: { isf?: { elements: { n: number; label: string; value: string; status: string }[]; readiness_pct: number; missing: string[] } };
+  payload: {
+    isf?: { elements: { n: number; label: string; value: string; status: string }[]; readiness_pct: number; missing: string[] };
+    entry?: EntryFiling;
+  };
   created_at: string;
 }
 
@@ -171,7 +179,7 @@ export default function BrokerQueuePage() {
       </div>
 
       {filings.length > 0 && (
-        <Section title="Filings — pending broker review" count={filings.filter((f) => f.status === "pending_review").length} hint="ISF drafts routed from shipment coordination">
+        <Section title="Filings — pending broker review" count={filings.filter((f) => f.status === "pending_review").length} hint="ISF & entry (7501) drafts routed from shipment coordination">
           {filings.map((f) => <FilingRow key={f.id} f={f} onApprove={() => approveFiling(f.id)} />)}
         </Section>
       )}
@@ -451,6 +459,8 @@ function FlagDot({ kind }: { kind: FlagKind }) {
 function FilingRow({ f, onApprove }: { f: Filing; onApprove: () => void }) {
   const [open, setOpen] = useState(false);
   const isf = f.payload?.isf;
+  const entry = f.payload?.entry;
+  const readiness = isf?.readiness_pct ?? entry?.readiness_pct;
   const approved = f.status === "approved";
   return (
     <div className={classNames("rounded-card border bg-white shadow-card", approved ? "border-cardline" : "border-accent/50")}>
@@ -459,7 +469,7 @@ function FilingRow({ f, onApprove }: { f: Filing; onApprove: () => void }) {
           <span className={classNames("shrink-0 text-muted transition", open && "rotate-90")}>›</span>
           <span className="min-w-0">
             <span className="block truncate text-sm text-navy">{f.title}</span>
-            <span className="text-[11px] text-muted">{f.type.toUpperCase()} · {f.shipment_ref}{isf ? ` · ${isf.readiness_pct}% ready` : ""}</span>
+            <span className="text-[11px] text-muted">{f.type.toUpperCase()} · {f.shipment_ref}{readiness != null ? ` · ${readiness}% ready` : ""}</span>
           </span>
         </button>
         {approved ? (
@@ -483,6 +493,34 @@ function FilingRow({ f, onApprove }: { f: Filing; onApprove: () => void }) {
             </tbody>
           </table>
           {isf.missing.length > 0 && <div className="mt-1.5 text-[11px] text-warn">Needs from supplier/forwarder: {isf.missing.join(", ")}</div>}
+        </div>
+      )}
+      {open && entry && (
+        <div className="border-t border-cardline bg-navy-50/40 px-4 py-3 text-[11px]">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-4">
+            <span><span className="text-muted">Entry type:</span> <span className="text-navy">{entry.entry_type}</span></span>
+            <span><span className="text-muted">Port:</span> <span className="text-navy">{entry.port_of_entry}</span></span>
+            <span><span className="text-muted">IOR:</span> <span className="text-navy">{entry.ior_number}</span></span>
+            <span><span className="text-muted">Origin:</span> <span className="text-navy">{entry.country_of_origin}</span></span>
+          </div>
+          <table className="mt-2 w-full">
+            <thead><tr className="border-b border-cardline text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-1">Line</th><th className="py-1">HTS</th><th className="py-1 text-right">Value</th><th className="py-1 text-right">Line duty</th></tr></thead>
+            <tbody>
+              {entry.lines.map((ln, i) => (
+                <tr key={i} className="border-b border-cardline/40">
+                  <td className="py-1 pr-2 text-navy">{ln.description}</td>
+                  <td className="py-1 pr-2 font-mono text-muted">{ln.hts_code}</td>
+                  <td className="py-1 text-right tabular-nums text-muted">{fmtMoney(ln.value_usd_cents)}</td>
+                  <td className="py-1 text-right tabular-nums font-semibold text-navy">{fmtMoney(ln.line_duty_usd_cents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-1 flex flex-wrap justify-end gap-x-4 text-[10px] text-muted">
+            <span>MPF {fmtMoney(entry.mpf_usd_cents)}</span><span>HMF {fmtMoney(entry.hmf_usd_cents)}</span>
+            <span className="font-semibold text-navy">Total duty + fees {fmtMoney(entry.total_duty_usd_cents)}</span>
+          </div>
+          {entry.missing.length > 0 && <div className="mt-1.5 text-[11px] text-warn">Needs before filing: {entry.missing.join(", ")}</div>}
         </div>
       )}
     </div>

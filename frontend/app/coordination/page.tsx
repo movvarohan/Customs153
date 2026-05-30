@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE_URL, classNames } from "@/lib/api";
+import { API_BASE_URL, classNames, fmtMoney } from "@/lib/api";
 
 type Party = "Freight forwarder" | "Ocean carrier" | "Customs broker" | "CBP" | "Drayage trucker" | "Warehouse";
 type MilestoneStatus = "done" | "in_progress" | "next" | "upcoming" | "at_risk";
@@ -176,7 +176,12 @@ function ShipmentCard({ sh }: { sh: Shipment }) {
 interface Outreach { recommended_channel: "email" | "call" | "sms"; urgency: "high" | "normal"; email: { to_party: string; subject: string; body: string }; call_script: string; sms: string; summary: string }
 interface IsfElement { n: number; label: string; value: string; status: "filled" | "assumed" | "needs_supplier" | "to_confirm" }
 interface Isf { shipment_ref: string; elements: IsfElement[]; carrier_elements: string[]; missing: string[]; readiness_pct: number }
-type Draft = { kind: "isf"; isf: Isf; outreach: Outreach } | { kind: "comms"; outreach: Outreach };
+interface EntryLine { description: string; hts_code: string; country_of_origin: string; value_usd_cents: number; base_duty_usd_cents: number; section_301_usd_cents: number; section_232_usd_cents: number; line_duty_usd_cents: number; hts_status: "filled" | "to_confirm" }
+interface Entry { shipment_ref: string; entry_type: string; port_of_entry: string; importer_of_record: string; ior_number: string; consignee_number: string; country_of_origin: string; lines: EntryLine[]; mpf_usd_cents: number; hmf_usd_cents: number; total_entered_value_usd_cents: number; total_duty_usd_cents: number; missing: string[]; readiness_pct: number }
+type Draft =
+  | { kind: "isf"; isf: Isf; outreach: Outreach }
+  | { kind: "entry"; entry: Entry; outreach: Outreach }
+  | { kind: "comms"; outreach: Outreach };
 
 function CoordinatePanel({ sh }: { sh: Shipment }) {
   const [state, setState] = useState<null | "loading" | Draft>(null);
@@ -197,11 +202,11 @@ function CoordinatePanel({ sh }: { sh: Shipment }) {
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setState(null); }
   };
 
-  const route = async (isf: Isf) => {
+  const route = async (type: string, title: string, payload: unknown) => {
     try {
       const r = await fetch(`${API_BASE_URL}/api/filings`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ shipment_ref: sh.id, type: "isf", title: `ISF 10+2 — ${sh.id} (${sh.supplier})`, payload: { isf } }),
+        body: JSON.stringify({ shipment_ref: sh.id, type, title, payload }),
       });
       if (r.ok) setRouted(true);
     } catch { /* ignore */ }
@@ -248,8 +253,58 @@ function CoordinatePanel({ sh }: { sh: Shipment }) {
               </table>
               <div className="mt-1 text-[10px] text-muted">+ carrier-filed: {d.isf.carrier_elements.join("; ")}</div>
               {!routed ? (
-                <button onClick={() => route(d.isf)} className="mt-2 rounded-md bg-navy px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-navy/90">
+                <button onClick={() => route("isf", `ISF 10+2 — ${sh.id} (${sh.supplier})`, { isf: d.isf })} className="mt-2 rounded-md bg-navy px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-navy/90">
                   Route ISF to broker review →
+                </button>
+              ) : (
+                <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-accent-50 px-2 py-1 text-[11px] font-semibold text-accent-700">Routed to broker review ✓ — appears in the Broker queue</div>
+              )}
+            </div>
+          )}
+
+          {d.kind === "entry" && (
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-semibold text-navy">Draft CBP 7501 entry — {d.entry.readiness_pct}% ready</span>
+                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-navy-100"><div className="h-full bg-accent" style={{ width: `${d.entry.readiness_pct}%` }} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 rounded bg-navy-50/40 p-2 text-[10px]">
+                <KV k="Entry type" v={d.entry.entry_type} />
+                <KV k="Port of entry" v={d.entry.port_of_entry} />
+                <KV k="Importer of record" v={`${d.entry.importer_of_record} (${d.entry.ior_number})`} />
+                <KV k="Country of origin" v={d.entry.country_of_origin} />
+              </div>
+              <table className="mt-2 w-full text-[10px]">
+                <thead>
+                  <tr className="border-b border-cardline text-left uppercase tracking-wider text-muted">
+                    <th className="py-1">Line</th><th className="py-1">HTS</th>
+                    <th className="py-1 text-right">Entered value</th><th className="py-1 text-right">Base</th>
+                    <th className="py-1 text-right">301</th><th className="py-1 text-right">Line duty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.entry.lines.map((ln, i) => (
+                    <tr key={i} className="border-b border-cardline/40">
+                      <td className="py-1 pr-2 text-navy">{ln.description}</td>
+                      <td className="py-1 pr-2 font-mono text-muted">{ln.hts_code}{ln.hts_status === "to_confirm" && <span className="ml-1 rounded bg-amber-50 px-1 text-[8px] uppercase text-amber-700">confirm</span>}</td>
+                      <td className="py-1 text-right tabular-nums text-muted">{fmtMoney(ln.value_usd_cents)}</td>
+                      <td className="py-1 text-right tabular-nums text-muted">{fmtMoney(ln.base_duty_usd_cents)}</td>
+                      <td className="py-1 text-right tabular-nums text-muted">{fmtMoney(ln.section_301_usd_cents)}</td>
+                      <td className="py-1 text-right tabular-nums font-semibold text-navy">{fmtMoney(ln.line_duty_usd_cents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-1 flex flex-wrap justify-end gap-x-4 gap-y-0.5 text-[10px] text-muted">
+                <span>MPF {fmtMoney(d.entry.mpf_usd_cents)}</span>
+                <span>HMF {fmtMoney(d.entry.hmf_usd_cents)}</span>
+                <span className="font-semibold text-navy">Total entered value {fmtMoney(d.entry.total_entered_value_usd_cents)}</span>
+                <span className="font-semibold text-navy">Total duty + fees {fmtMoney(d.entry.total_duty_usd_cents)}</span>
+              </div>
+              {d.entry.missing.length > 0 && <div className="mt-1 text-[10px] text-warn">Needs before filing: {d.entry.missing.join(", ")}</div>}
+              {!routed ? (
+                <button onClick={() => route("entry", `CBP 7501 — ${sh.id} (${sh.supplier})`, { entry: d.entry })} className="mt-2 rounded-md bg-navy px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-navy/90">
+                  Route entry (7501) to broker review →
                 </button>
               ) : (
                 <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-accent-50 px-2 py-1 text-[11px] font-semibold text-accent-700">Routed to broker review ✓ — appears in the Broker queue</div>
