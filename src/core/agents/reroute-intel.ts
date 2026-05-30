@@ -72,8 +72,8 @@ const REPORT_SCHEMA = {
     avg_labor_cost_note: { type: "string", description: "Labor cost grounded in the World Bank data you pulled" },
     manufacturing_availability: { type: "string", enum: ["high", "medium", "low"], description: "Capacity/ecosystem availability for this catalog's categories" },
     lead_time_note: { type: "string", description: "Ocean transit / lead-time + freight availability vs China" },
-    key_risks: { type: "array", items: { type: "string" }, description: "Top ramp/quality/origin risks of the move" },
-    summary: { type: "string" },
+    key_risks: { type: "array", items: { type: "string" }, description: "Top ramp/quality/origin risks of the move, each one short plain-text sentence (no markdown)" },
+    summary: { type: "string", description: "At most 2 short sentences, plain text, no markdown or asterisks. Detail belongs in the structured fields, not here." },
   },
   required: ["origin_hub", "destination_hubs", "blended_unit_cost_index", "avg_labor_cost_note", "manufacturing_availability", "lead_time_note", "key_risks", "summary"],
 };
@@ -85,7 +85,9 @@ Process:
 2. Call world_bank_country_profile for the destination to ground labor-cost and capacity claims in real data (GDP/capita, manufacturing % of GDP, labor force).
 3. Call ${REPORT_TOOL} once with the brief.
 
-Set blended_unit_cost_index honestly for the whole catalog moving there (China=100). Be specific and cited. Do NOT suggest transshipment/origin-faking or invent FTAs.`;
+Set blended_unit_cost_index honestly for the whole catalog moving there (China=100). Be specific and cited. Do NOT suggest transshipment/origin-faking or invent FTAs.
+
+Writing style — IMPORTANT: Write every text field in plain prose. Do NOT use markdown, asterisks, bold (**), bullets, or headings inside field values. The "summary" must be at most 2 short sentences a CFO can act on — keep all the detail in the structured fields (labor, lead time, availability, clusters, risks), not crammed into the summary. Each key_risk is one short sentence.`;
 
 export interface RerouteIntelInput {
   destination_iso2: string;

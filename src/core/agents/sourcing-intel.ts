@@ -133,7 +133,9 @@ Guidance:
 - second_order_effects: lead-time/MOQ, supplier ramp/quality, tariff stacking, substantial-transformation origin rules, working capital.
 - summary: 2–3 sentences a CFO can act on.
 
-Be rigorous and specific. Do NOT suggest transshipment/origin-faking or invent FTAs. Prefer facts you found via search; if a search is inconclusive, say so in the rationale rather than inventing specifics.`;
+Be rigorous and specific. Do NOT suggest transshipment/origin-faking or invent FTAs. Prefer facts you found via search; if a search is inconclusive, say so in the rationale rather than inventing specifics.
+
+Writing style — IMPORTANT: Write every text field in plain prose. Do NOT use markdown, asterisks, bold (**), bullets, or headings inside field values. Keep "summary" to 2–3 short sentences; each rationale to 1–2 sentences. Put detail in the structured fields, not crammed into one block.`;
 
 export interface SourcingIntelInput {
   description: string;

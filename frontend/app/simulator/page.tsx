@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney } from "@/lib/api";
 import { HubMap, type MapPoint } from "@/components/HubMap";
+import { RichText } from "@/components/RichText";
 
 interface RerouteHub {
   hub_city: string;
@@ -540,7 +541,7 @@ function DestinationIntel({ intel, appliedPct, onApply }: { intel: RerouteIntel;
 
   return (
     <div className="mt-4 space-y-4 text-xs">
-      <p className="text-sm text-navy">{intel.summary}</p>
+      <RichText text={intel.summary} className="text-sm text-navy" />
 
       {(intel.research.web_searches > 0 || intel.research.world_bank_lookups > 0) && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-accent/30 bg-accent-50/30 px-3 py-2">
@@ -580,7 +581,7 @@ function DestinationIntel({ intel, appliedPct, onApply }: { intel: RerouteIntel;
                 h.feasibility === "low" && "bg-amber-100 text-amber-800")}>{h.feasibility}</span>
             </div>
             <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted">{h.hub_region}</div>
-            <p className="mt-1 text-muted">{h.note}</p>
+            <RichText text={h.note} className="mt-1 text-muted" />
             <div className="mt-1.5 flex flex-wrap gap-1">
               {h.example_suppliers.map((s, k) => (
                 <span key={k} className="rounded bg-navy-50 px-1.5 py-0.5 text-[10px] text-navy">{s}</span>
@@ -596,7 +597,9 @@ function DestinationIntel({ intel, appliedPct, onApply }: { intel: RerouteIntel;
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted">Key ramp risks</div>
           <ul className="space-y-1.5">
             {intel.key_risks.map((r, i) => (
-              <li key={i} className="rounded-md border border-cardline bg-white p-2.5 text-muted">{r}</li>
+              <li key={i} className="rounded-md border border-cardline bg-white p-2.5 text-muted">
+                <RichText text={r} />
+              </li>
             ))}
           </ul>
         </div>
@@ -626,7 +629,7 @@ function Stat2({ label, value, accent }: { label: string; value: string; accent?
   return (
     <div className="rounded-md border border-cardline bg-white p-3">
       <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
-      <div className={classNames("mt-0.5 text-[11px]", accent ? "font-semibold capitalize text-accent-700" : "text-navy")}>{value}</div>
+      <div className={classNames("mt-0.5 text-[11px]", accent ? "font-semibold capitalize text-accent-700" : "text-navy")}>{value.replace(/\*+/g, "")}</div>
     </div>
   );
 }

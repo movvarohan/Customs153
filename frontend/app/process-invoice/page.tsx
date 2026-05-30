@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+import { RichText } from "@/components/RichText";
 
 interface LineClassification {
   hts_code: string;
@@ -668,7 +669,7 @@ function LineDetail({
             GRI {classification.gri_rule_applied} applied · {classification.confidence} confidence
           </span>
         </div>
-        <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-muted">{classification.reasoning}</p>
+        <RichText text={classification.reasoning} className="mt-2 text-xs text-muted" />
         {classification.citations.length > 0 && (
           <div className="mt-2 text-[11px] text-muted">
             Citations:{" "}
@@ -941,7 +942,7 @@ function CounterfactualPanel({
                     </span>
                   </span>
                 </div>
-                <p className="mt-1.5 italic text-muted">{s.reasoning}</p>
+                <RichText text={s.reasoning} className="mt-1.5 italic text-muted" />
                 <p className="mt-1 text-[11px] text-muted">
                   <span className="font-semibold text-navy">Operational:</span>{" "}
                   {s.operational_notes}
@@ -1327,7 +1328,7 @@ function CrossVerifyPanel({
               </span>
             )}
           </div>
-          <p className="text-navy">{d.reasoning}</p>
+          <RichText text={d.reasoning} className="text-navy" />
           {d.evidence.length > 0 && (
             <div className="mt-1 space-y-1">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">

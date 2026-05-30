@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL, classNames, readNDJSON } from "@/lib/api";
+import { RichText } from "@/components/RichText";
 
 type Turn =
   | { role: "user"; content: string }
@@ -144,7 +145,7 @@ export default function CopilotPage() {
                 )}
                 {t.content && (
                   <div className="rounded-card rounded-tl-sm border border-cardline bg-white px-4 py-2.5 text-sm leading-relaxed text-navy shadow-card">
-                    {t.content}
+                    <RichText text={t.content} />
                     {busy && i === turns.length - 1 && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent/70 align-middle" aria-hidden />}
                   </div>
                 )}
