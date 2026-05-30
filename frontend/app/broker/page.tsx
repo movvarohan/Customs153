@@ -32,6 +32,15 @@ interface Queue {
   summary: { pending: number; signed: number; flagged: number; total_value_usd_cents: number; total_duty_usd_cents: number };
   lines: Line[];
 }
+interface Filing {
+  id: string;
+  shipment_ref: string;
+  type: string;
+  status: "pending_review" | "approved";
+  title: string;
+  payload: { isf?: { elements: { n: number; label: string; value: string; status: string }[]; readiness_pct: number; missing: string[] } };
+  created_at: string;
+}
 
 export default function BrokerQueuePage() {
   const [queue, setQueue] = useState<Queue | null>(null);
@@ -39,6 +48,20 @@ export default function BrokerQueuePage() {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [filings, setFilings] = useState<Filing[]>([]);
+
+  const refreshFilings = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/filings`, { cache: "no-store" });
+      if (r.ok) { const j = await r.json(); setFilings(j.filings ?? []); }
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { refreshFilings(); }, [refreshFilings]);
+
+  const approveFiling = useCallback(async (id: string) => {
+    await fetch(`${API_BASE_URL}/api/filings/${id}/approve`, { method: "POST" });
+    await refreshFilings();
+  }, [refreshFilings]);
 
   const refresh = useCallback(async () => {
     try {
@@ -146,6 +169,12 @@ export default function BrokerQueuePage() {
         </button>
         <span className="text-[11px] text-muted">Bulk-sign the high-confidence lines, then review the flagged ones by hand.</span>
       </div>
+
+      {filings.length > 0 && (
+        <Section title="Filings — pending broker review" count={filings.filter((f) => f.status === "pending_review").length} hint="ISF drafts routed from shipment coordination">
+          {filings.map((f) => <FilingRow key={f.id} f={f} onApprove={() => approveFiling(f.id)} />)}
+        </Section>
+      )}
 
       <Section title="Pending broker review" count={pending.length} hint="agent predictions — no signature yet">
         {pending.length === 0 ? (
@@ -417,6 +446,47 @@ function FlagChip({ f }: { f: Flag }) {
 function FlagDot({ kind }: { kind: FlagKind }) {
   const color = kind === "risk" ? "bg-warn" : kind === "warn" ? "bg-amber-500" : "bg-navy-300";
   return <span className={classNames("mt-1 h-1.5 w-1.5 shrink-0 rounded-full", color)} />;
+}
+
+function FilingRow({ f, onApprove }: { f: Filing; onApprove: () => void }) {
+  const [open, setOpen] = useState(false);
+  const isf = f.payload?.isf;
+  const approved = f.status === "approved";
+  return (
+    <div className={classNames("rounded-card border bg-white shadow-card", approved ? "border-cardline" : "border-accent/50")}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+        <button onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <span className={classNames("shrink-0 text-muted transition", open && "rotate-90")}>›</span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm text-navy">{f.title}</span>
+            <span className="text-[11px] text-muted">{f.type.toUpperCase()} · {f.shipment_ref}{isf ? ` · ${isf.readiness_pct}% ready` : ""}</span>
+          </span>
+        </button>
+        {approved ? (
+          <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">approved</span>
+        ) : (
+          <button onClick={onApprove} className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-700">Approve filing</button>
+        )}
+      </div>
+      {open && isf && (
+        <div className="border-t border-cardline bg-navy-50/40 px-4 py-3">
+          <table className="w-full text-[11px]">
+            <tbody>
+              {isf.elements.map((e) => (
+                <tr key={e.n} className="border-b border-cardline/40 last:border-b-0">
+                  <td className="py-1 pr-2 text-muted">{e.n}.</td>
+                  <td className="py-1 pr-2 text-navy">{e.label}</td>
+                  <td className="py-1 pr-2 text-muted">{e.value}</td>
+                  <td className="py-1 text-right text-[10px] uppercase tracking-wider text-muted">{e.status.replace(/_/g, " ")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {isf.missing.length > 0 && <div className="mt-1.5 text-[11px] text-warn">Needs from supplier/forwarder: {isf.missing.join(", ")}</div>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function Section({ title, count, hint, children }: { title: string; count: number; hint: string; children: React.ReactNode }) {

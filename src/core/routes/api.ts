@@ -36,6 +36,8 @@ import { analyzeReroute } from "@/core/agents/reroute-intel";
 import { buildBrokerQueue } from "@/core/lib/broker-queue";
 import { computeDeadlines } from "@/core/lib/deadlines";
 import { computeCoordination } from "@/core/lib/coordination";
+import { assembleIsf, draftOutreach } from "@/core/agents/coordinator";
+import { insertFiling, listFilings, approveFiling } from "@/core/lib/filings";
 import { findFactories } from "@/core/agents/factory-finder";
 import { deepDiveFactory } from "@/core/agents/factory-deepdive";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
@@ -235,6 +237,87 @@ apiRoute.get("/deadlines", async (c) => {
 apiRoute.get("/coordination", (c) => {
   const result = computeCoordination("Atlas Retail Holdings LLC", new Date());
   return c.json(result);
+});
+
+// POST /api/coordination/draft — agentic next step for a shipment's pending
+// action: for an ISF-due shipment, assemble the ISF 10+2 + an outreach for the
+// missing elements; otherwise draft outreach (email/call/SMS) to the right
+// party. Drafts only — nothing is auto-sent.
+const CoordDraftBody = z.object({ shipment_id: z.string().min(1) });
+apiRoute.post("/coordination/draft", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = CoordDraftBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  const coord = computeCoordination("Atlas Retail Holdings LLC", new Date());
+  const shipment = coord.shipments.find((s) => s.id === parsed.data.shipment_id);
+  if (!shipment) return c.json({ error: "shipment not found" }, 404);
+  const label = shipment.next_action?.label ?? "";
+
+  try {
+    if (/ISF/i.test(label)) {
+      const isf = await assembleIsf(ctx, shipment);
+      const outreach = await draftOutreach(ctx, {
+        shipment,
+        party: "Freight forwarder / supplier",
+        action: "ISF (10+2) filing",
+        purpose: `Request the missing ISF elements so we can file ≥24h before vessel loading: ${isf.missing.join(", ")}.`,
+      });
+      return c.json({ kind: "isf", isf, outreach });
+    }
+    // Pick the party + purpose from the pending action.
+    let party = "Freight forwarder";
+    let purpose = `Coordinate the next step (${label}) for this shipment.`;
+    if (shipment.demurrage_risk || /Drayage/i.test(label)) {
+      party = "Drayage trucker";
+      purpose = `Schedule the container pickup before the last free day (${shipment.last_free_day}) to avoid demurrage; confirm chassis and the terminal appointment.`;
+    } else if (/release/i.test(label)) {
+      party = "Drayage trucker";
+      purpose = "CBP has released the cargo — proceed with pickup and confirm the delivery appointment.";
+    } else if (/entry/i.test(label)) {
+      party = "Importer (documents)";
+      purpose = "Confirm the commercial invoice, packing list, and any PGA documents are in hand so the CBP entry can be filed before arrival.";
+    } else if (/departs/i.test(label)) {
+      party = "Ocean carrier / forwarder";
+      purpose = "Confirm the cargo is loaded and the on-board date so we can finalize the entry timeline.";
+    }
+    const outreach = await draftOutreach(ctx, { shipment, party, action: label || shipment.current_stage, purpose });
+    return c.json({ kind: "comms", outreach });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+// POST /api/filings — route a draft (e.g. an ISF) to the broker review queue.
+const FilingBody = z.object({
+  shipment_ref: z.string().min(1),
+  type: z.string().min(1),
+  title: z.string().min(1),
+  payload: z.unknown(),
+});
+apiRoute.post("/filings", async (c) => {
+  const ctx = c.var.ctx;
+  const customerId = await ensureDemoCustomer(ctx);
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = FilingBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  const filing = await insertFiling(ctx, { customer_id: customerId, shipment_ref: parsed.data.shipment_ref, type: parsed.data.type, title: parsed.data.title, payload: parsed.data.payload });
+  return c.json(filing);
+});
+
+apiRoute.get("/filings", async (c) => {
+  const ctx = c.var.ctx;
+  const customerId = await ensureDemoCustomer(ctx);
+  const filings = await listFilings(ctx, customerId);
+  return c.json({ filings });
+});
+
+apiRoute.post("/filings/:id/approve", async (c) => {
+  const ctx = c.var.ctx;
+  const ok = await approveFiling(ctx, c.req.param("id"));
+  return c.json({ ok });
 });
 
 // ── POST /api/process-invoice ─────────────────────────────────────────────

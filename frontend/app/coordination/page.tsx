@@ -165,10 +165,141 @@ function ShipmentCard({ sh }: { sh: Shipment }) {
             <KV k="Transit" v={`${sh.transit_days} days`} />
             <KV k="Last free day" v={sh.last_free_day} />
           </div>
+
+          {sh.next_action && <CoordinatePanel sh={sh} />}
         </div>
       )}
     </div>
   );
+}
+
+interface Outreach { recommended_channel: "email" | "call" | "sms"; urgency: "high" | "normal"; email: { to_party: string; subject: string; body: string }; call_script: string; sms: string; summary: string }
+interface IsfElement { n: number; label: string; value: string; status: "filled" | "assumed" | "needs_supplier" | "to_confirm" }
+interface Isf { shipment_ref: string; elements: IsfElement[]; carrier_elements: string[]; missing: string[]; readiness_pct: number }
+type Draft = { kind: "isf"; isf: Isf; outreach: Outreach } | { kind: "comms"; outreach: Outreach };
+
+function CoordinatePanel({ sh }: { sh: Shipment }) {
+  const [state, setState] = useState<null | "loading" | Draft>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [routed, setRouted] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const draft = async () => {
+    setState("loading"); setErr(null); setRouted(false); setSent(false);
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/coordination/draft`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ shipment_id: sh.id }),
+      });
+      const j = await r.json();
+      if (!r.ok) { setErr(j.error ? cleanErr(String(j.error)) : `backend ${r.status}`); setState(null); return; }
+      setState(j as Draft);
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setState(null); }
+  };
+
+  const route = async (isf: Isf) => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/filings`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ shipment_ref: sh.id, type: "isf", title: `ISF 10+2 — ${sh.id} (${sh.supplier})`, payload: { isf } }),
+      });
+      if (r.ok) setRouted(true);
+    } catch { /* ignore */ }
+  };
+
+  const d = state && state !== "loading" ? state : null;
+  const o = d?.outreach;
+  const copyEmail = () => {
+    if (!o) return;
+    navigator.clipboard?.writeText(`Subject: ${o.email.subject}\n\n${o.email.body}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
+
+  return (
+    <div className="mt-4 rounded-md border border-accent/30 bg-accent-50/20 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-700">Agentic coordination</span>
+        {!d && <button onClick={draft} disabled={state === "loading"}
+          className="rounded-md bg-accent px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-accent-700 disabled:opacity-50">
+          {state === "loading" ? "Drafting…" : `Coordinate: ${sh.next_action?.label}`}
+        </button>}
+      </div>
+      {err && <div className="mt-2 text-[11px] text-warn">{err}</div>}
+      {state === "loading" && <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted"><span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />Drafting the next step…</div>}
+
+      {d && (
+        <div className="mt-3 space-y-3 text-[11px]">
+          {d.kind === "isf" && (
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-semibold text-navy">Draft ISF (10+2) — {d.isf.readiness_pct}% ready</span>
+                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-navy-100"><div className="h-full bg-accent" style={{ width: `${d.isf.readiness_pct}%` }} /></div>
+              </div>
+              <table className="w-full">
+                <tbody>
+                  {d.isf.elements.map((e) => (
+                    <tr key={e.n} className="border-b border-cardline/40 last:border-b-0">
+                      <td className="py-1 pr-2 text-muted">{e.n}.</td>
+                      <td className="py-1 pr-2 text-navy">{e.label}</td>
+                      <td className="py-1 pr-2 text-muted">{e.value}</td>
+                      <td className="py-1 text-right"><IsfTag s={e.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-1 text-[10px] text-muted">+ carrier-filed: {d.isf.carrier_elements.join("; ")}</div>
+              {!routed ? (
+                <button onClick={() => route(d.isf)} className="mt-2 rounded-md bg-navy px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-navy/90">
+                  Route ISF to broker review →
+                </button>
+              ) : (
+                <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-accent-50 px-2 py-1 text-[11px] font-semibold text-accent-700">Routed to broker review ✓ — appears in the Broker queue</div>
+              )}
+            </div>
+          )}
+
+          {o && (
+            <div className="rounded-md border border-cardline bg-white p-2.5">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">Outreach to {o.email.to_party}</span>
+                <span className="rounded-full bg-navy-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-navy">recommend: {o.recommended_channel}</span>
+                {o.urgency === "high" && <span className="rounded-full bg-warn/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-warn">urgent</span>}
+                <button onClick={copyEmail} className="ml-auto rounded border border-accent/40 px-2 py-0.5 text-[10px] font-semibold text-accent-700 hover:bg-accent-50">{copied ? "Copied ✓" : "Copy email"}</button>
+              </div>
+              <div className="text-navy"><span className="text-muted">Subject:</span> {o.email.subject}</div>
+              <pre className="mt-1 whitespace-pre-wrap font-sans text-[11px] leading-snug text-muted">{o.email.body}</pre>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[10px] font-semibold text-accent-700">Call script &amp; SMS</summary>
+                <div className="mt-1 rounded bg-navy-50/50 p-2 text-muted"><span className="font-semibold text-navy">Call: </span>{o.call_script}</div>
+                <div className="mt-1 rounded bg-navy-50/50 p-2 text-muted"><span className="font-semibold text-navy">SMS: </span>{o.sms}</div>
+              </details>
+              <div className="mt-2 flex items-center gap-2">
+                {!sent ? (
+                  <button onClick={() => setSent(true)} className="rounded-md border border-cardline px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-navy-50">Mark as sent</button>
+                ) : <span className="text-[11px] font-semibold text-accent-700">Marked sent ✓</span>}
+                <span className="text-[10px] italic text-muted">Drafts only — a human reviews and sends; nothing is auto-sent.</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IsfTag({ s }: { s: IsfElement["status"] }) {
+  const map: Record<IsfElement["status"], { l: string; c: string }> = {
+    filled: { l: "filled", c: "bg-accent-50 text-accent-700" },
+    assumed: { l: "assumed", c: "bg-navy-50 text-navy" },
+    to_confirm: { l: "confirm", c: "bg-amber-50 text-amber-700" },
+    needs_supplier: { l: "from supplier", c: "bg-warn/15 text-warn" },
+  };
+  const m = map[s];
+  return <span className={classNames("rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider", m.c)}>{m.l}</span>;
+}
+
+function cleanErr(raw: string): string {
+  if (/credit balance is too low/i.test(raw)) return "Anthropic API credits exhausted — add credits to draft outreach.";
+  return raw.slice(0, 180);
 }
 
 function StatusTag({ status }: { status: MilestoneStatus }) {
