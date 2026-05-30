@@ -13,7 +13,7 @@ Read the **SAY** lines as voiceover while you perform the **SHOW** actions. Keep
 | **Q3** | Use cases, impact, who uses it | 3:40 – 4:15 |
 | **Q4** | What we'd add next — business **and** platform/technical | 4:15 – 5:20 |
 
-> **Stat to verify before you submit:** the "unclaimed refunds" figures below (≈$80B/yr in U.S. duties; billions in unclaimed overpayments + drawback) are *industry estimates* — grab a citable source (e.g., CBP trade statistics, a drawback-industry report) and put it on screen.
+> **Stats to cite on screen:** ≈$80B/yr in U.S. duties collected (CBP trade statistics) and **$2B+/yr in unclaimed duty drawback** (the most-cited industry figure — pull it from a drawback-specialist report or CBP and show the source). These are estimates; anchor them to a citation so they read as researched, not asserted.
 
 ---
 
@@ -22,7 +22,7 @@ Read the **SAY** lines as voiceover while you perform the **SHOW** actions. Keep
 Written as flowing, plain sentences so it's easy to follow. Read at a steady, confident pace (~165 wpm) and use the screen transitions as natural breaths. SHOW cues are in **[brackets]** and aren't spoken. The fuller ~5-minute version is below if you want more detail.
 
 **[SHOW: Home — hero + the "Why now" stats]**  *(Q1)*
-"Every year, American importers pay over eighty billion dollars in tariffs, and billions in refunds they're owed go unclaimed, because no one is looking. We built Customs Agent Suite to fix three problems. First, classification is real legal reasoning, and forty-two percent of penalties come from a wrong code. Second, only about fourteen thousand licensed brokers serve millions of importers — the expertise can't scale. Third, the 2025 tariff surge left small importers unable to keep up. Our insight: you can't legally remove the broker, so we let the AI do the work and have the broker certify it."
+"Every year, American importers pay over eighty billion dollars in tariffs, and over two billion dollars in refunds they're owed go unclaimed — not because the money isn't there, but because claiming it is complicated, expensive, and bound by deadlines that quietly expire. We built Customs Agent Suite to fix three problems. First, classification is real legal reasoning, and forty-two percent of penalties come from a wrong code. Second, only about fourteen thousand licensed brokers serve millions of importers — the expertise can't scale. Third, the 2025 tariff surge left small importers unable to keep up. Our insight: you can't legally remove the broker, so we let the AI do the work and have the broker certify it."
 
 **[SHOW: Methodology — accuracy table + agent pipeline]**  *(Q2: research + architecture)*
 "So how does it work? At its core, this is a retrieval system, not a model we trained. We embedded the entire U.S. tariff schedule and tens of thousands of binding rulings into a vector database, so it reasons over the real law, not memory. We grade it against our own benchmark of real rulings, so every classification ships with a citation you can check. And the duty math runs on a separate, deterministic engine, so the dollar amounts are always exact and auditable."
@@ -47,7 +47,7 @@ Written as flowing, plain sentences so it's easy to follow. Read at a steady, co
 
 **SHOW:** Home page; slowly scroll the hero and the "Why now" stats (42% / ~14,500 / 5–15%).
 
-**SAY (hook + the scale of the problem):** "Every year, U.S. importers pay over **eighty billion dollars** in tariffs — and the money they're legally owed back but never claim, overpayments and unclaimed drawback, runs into the **billions**. Most importers never even find out. We built **Customs Agent Suite** to capture it — and to keep importers from overpaying in the first place."
+**SAY (hook + the scale of the problem):** "Every year, U.S. importers pay over **eighty billion dollars** in tariffs — and **over two billion dollars** in refunds they're legally owed, from overpayments and duty drawback, go **unclaimed**. Not because the money isn't there, but because claiming it is **complicated, expensive, and bound by tight deadlines** — so most importers never even try. We built **Customs Agent Suite** to capture it, and to keep importers from overpaying in the first place."
 
 **SAY (the bottlenecks we identified):** "We found three. **First, classification** — every imported product needs a precise ten-digit HTS code, and **forty-two percent** of customs penalties come from getting it wrong. It's legal reasoning, not a lookup. **Second, people** — there are only about **fourteen thousand** licensed customs brokers in the entire country, serving millions of importers; the expertise simply doesn't scale. **Third, timing** — tariffs exploded in 2025, Section 301, 232, reciprocal duties, and small importers have no way to keep up. So billions in recoverable duty just sits there, unclaimed, because no one is looking."
 
