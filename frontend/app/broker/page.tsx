@@ -21,11 +21,25 @@ interface Line {
   chapter: string;
   source: "agent" | "broker";
   last_classified_at: string;
+  classification_id: string | null;
   customs_value_usd_cents: number;
   duty: Duty;
   effective_rate: number;
   confidence: number;
   flags: Flag[];
+}
+interface CareRecord {
+  id: string;
+  gri_rule_applied: string | null;
+  product_description: string | null;
+  candidate_count: number;
+  top_candidates: { hts_code: string; score: number; description: string }[];
+  citations: string[];
+  alternatives_considered: { hts_code: string; rejected_because: string }[];
+  missing_inputs_for_precision: string[];
+  reasoning: string | null;
+  model: string | null;
+  prompt_version: string | null;
 }
 interface Queue {
   customer_id: string;
@@ -275,6 +289,25 @@ function Row({
 function Drawer({ l, edit, dirty, setEdits }: { l: Line; edit: string; dirty: boolean; setEdits: React.Dispatch<React.SetStateAction<Record<string, string>>> }) {
   const [cross, setCross] = useState<null | "loading" | CrossResult>(null);
   const [note, setNote] = useState("");
+  const [record, setRecord] = useState<null | "loading" | CareRecord | { error: string }>(null);
+
+  // Fetch the machine-checkable record once when the drawer opens. The
+  // broker should see this BEFORE deciding to approve — it's the four
+  // legal-steps trace the agent produced for this classification.
+  useEffect(() => {
+    if (!l.classification_id || record !== null) return;
+    setRecord("loading");
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE_URL}/api/audit-log/${l.classification_id}`, { cache: "no-store" });
+        if (!r.ok) { setRecord({ error: `backend ${r.status}` }); return; }
+        const j = (await r.json()) as { record: CareRecord };
+        setRecord(j.record);
+      } catch (e) {
+        setRecord({ error: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+  }, [l.classification_id, record]);
 
   const checkCross = async () => {
     setCross("loading");
@@ -378,6 +411,103 @@ function Drawer({ l, edit, dirty, setEdits }: { l: Line; edit: string; dirty: bo
             </button>
           )}
         </div>
+      </div>
+
+      {/* Reasonable-care record — the four legal steps the agent followed.
+          Read this BEFORE approving. */}
+      <div className="mt-5 rounded-md border border-cardline bg-white p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-navy px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-white">
+            Reasonable-care record
+          </div>
+          <div className="text-[10px] text-muted">
+            Review the four legal steps before approving. {typeof record === "object" && record && "gri_rule_applied" in record && record.gri_rule_applied && (
+              <span className="ml-1 font-semibold text-navy">GRI {record.gri_rule_applied}</span>
+            )}
+          </div>
+        </div>
+        {record === null || record === "loading" ? (
+          <p className="text-[11px] text-muted">{l.classification_id ? "Loading record…" : "No classification record on file for this line yet."}</p>
+        ) : "error" in record ? (
+          <p className="text-[11px] text-warn">Could not load record: {record.error}</p>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* ① Product facts used */}
+            <div>
+              <PillarLabel n={1}>Product facts used</PillarLabel>
+              <div className="mt-1 max-h-32 overflow-y-auto rounded-md border border-cardline bg-navy-50/40 p-2">
+                <p className="whitespace-pre-line text-[11px] leading-relaxed text-navy">
+                  {record.product_description ?? "—"}
+                </p>
+              </div>
+              {record.missing_inputs_for_precision.length > 0 && (
+                <p className="mt-1 text-[10px] text-amber-700">
+                  Missing for tighter precision: {record.missing_inputs_for_precision.join("; ")}
+                </p>
+              )}
+            </div>
+
+            {/* ② Tariff notes considered */}
+            <div>
+              <PillarLabel n={2}>Tariff notes considered ({record.candidate_count})</PillarLabel>
+              <div className="mt-1 max-h-32 overflow-y-auto rounded-md border border-cardline bg-navy-50/40 p-2">
+                {record.top_candidates.length === 0 ? (
+                  <p className="text-[11px] text-muted">no candidates recorded</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {record.top_candidates.map((tc, k) => (
+                      <li key={k} className="flex gap-2 text-[11px] leading-snug">
+                        <span className="w-28 shrink-0 font-mono text-navy">{tc.hts_code}</span>
+                        <span className="flex-1 truncate text-muted" title={tc.description}>{tc.description || "—"}</span>
+                        <span className="shrink-0 tabular-nums text-[10px] text-muted">{tc.score.toFixed(2)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {/* ③ CBP rulings cited */}
+            <div>
+              <PillarLabel n={3}>CBP rulings cited ({record.citations.length})</PillarLabel>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {record.citations.length === 0 && <span className="text-[11px] text-muted">none</span>}
+                {record.citations.map((c, k) => (
+                  <span key={k} className="rounded bg-navy-50/40 px-1.5 py-0.5 font-mono text-[11px] text-navy ring-1 ring-inset ring-cardline">{c}</span>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[10px] text-muted">Every cited code is enforced to be in the retrieved candidate set.</p>
+            </div>
+
+            {/* ④ Why competing codes were rejected */}
+            <div>
+              <PillarLabel n={4}>Why competing codes were rejected</PillarLabel>
+              <div className="mt-1 space-y-1.5">
+                {record.alternatives_considered.length === 0 ? (
+                  <p className="text-[11px] text-muted">No competing codes weighed.</p>
+                ) : (
+                  record.alternatives_considered.map((a, k) => (
+                    <div key={k} className="rounded-md border border-cardline bg-navy-50/40 p-2 text-[11px] leading-snug">
+                      <div className="font-mono text-navy">{a.hts_code}</div>
+                      <div className="mt-0.5 text-muted">{a.rejected_because}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Reasoning trace (full width) */}
+            <div className="md:col-span-2">
+              <PillarLabel n={null}>Reasoning trace</PillarLabel>
+              <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-cardline bg-navy-50/40 p-2">
+                <p className="whitespace-pre-line text-[11px] leading-relaxed text-navy">{record.reasoning ?? "—"}</p>
+              </div>
+              <p className="mt-1 text-[10px] text-muted">
+                Audit ID <span className="font-mono">{record.id.slice(0, 8)}</span> · {record.model ?? "—"} · prompt {record.prompt_version ?? "—"}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -558,6 +688,19 @@ function KV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
     <div className="flex gap-2">
       <dt className="w-28 shrink-0 text-muted">{k}</dt>
       <dd className={classNames("text-navy", mono && "font-mono")}>{v}</dd>
+    </div>
+  );
+}
+
+function PillarLabel({ n, children }: { n: number | null; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-navy">
+      {n !== null && (
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-white">
+          {n}
+        </span>
+      )}
+      {children}
     </div>
   );
 }

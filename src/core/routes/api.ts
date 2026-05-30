@@ -207,6 +207,55 @@ apiRoute.get("/audit-log", async (c) => {
   return c.json({ count: records.length, records });
 });
 
+// ── GET /api/audit-log/:id ───────────────────────────────────────────────
+// One classification's full machine-checkable record by audit ID. Same
+// shape as the list endpoint's records, returned as `{ record }`.
+apiRoute.get("/audit-log/:id", async (c) => {
+  const ctx = c.var.ctx;
+  const id = c.req.param("id");
+  const row = await ctx.db
+    .prepare(
+      "SELECT id, occurred_at, actor, entity_kind, action, payload_json FROM audit_log WHERE id = ? AND entity_kind = 'classification' LIMIT 1",
+    )
+    .bind(id)
+    .first<{ id: string; occurred_at: string; actor: string; entity_kind: string; action: string; payload_json: string }>();
+  if (!row) return c.json({ error: "not_found" }, 404);
+  let parsed: Record<string, unknown> = {};
+  try { parsed = JSON.parse(row.payload_json) as Record<string, unknown>; } catch { /* empty */ }
+  const result = (parsed.result ?? {}) as Record<string, unknown>;
+  const candidates = (parsed.candidates ?? []) as Array<{ htsCode: string; score: number; description?: string }>;
+  const userMessage = typeof parsed.userMessage === "string" ? (parsed.userMessage as string) : "";
+  const descMatch = userMessage.match(/Product description from the importer:\s*"""([\s\S]*?)"""/);
+  const product_description = descMatch?.[1]?.trim() ?? null;
+  return c.json({
+    record: {
+      id: row.id,
+      occurred_at: row.occurred_at,
+      actor: row.actor,
+      model: parsed.model ?? null,
+      prompt_version: parsed.promptVersion ?? null,
+      hts_code: result.hts_code ?? null,
+      hts_code_8: result.hts_code_8 ?? null,
+      gri_rule_applied: result.gri_rule_applied ?? null,
+      confidence: result.confidence ?? null,
+      precision_level: result.precision_level ?? null,
+      citations: (result.citations ?? []) as string[],
+      alternatives_considered: (result.alternative_codes_considered ?? []) as Array<{ hts_code: string; rejected_because: string }>,
+      missing_inputs_for_precision: (result.missing_inputs_for_precision ?? []) as string[],
+      validation_warning: result.validation_warning ?? null,
+      product_description,
+      candidate_count: candidates.length,
+      top_candidate: candidates[0]?.htsCode ?? null,
+      top_candidates: candidates.slice(0, 6).map((cand) => ({
+        hts_code: cand.htsCode,
+        score: cand.score,
+        description: cand.description ?? "",
+      })),
+      reasoning: result.reasoning ?? null,
+    },
+  });
+});
+
 // ── Sample shipment files ────────────────────────────────────────────────
 // One-click loading for the two primary surfaces: the frontend fetches
 // these, wraps them in a File, and runs the normal pipeline — so a single

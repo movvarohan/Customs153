@@ -26,6 +26,9 @@ export interface BrokerQueueLine {
   chapter: string;
   source: "agent" | "broker";
   last_classified_at: string;
+  /** Latest classification audit ID; the broker drawer fetches the full
+   *  machine-checkable record from /api/audit-log/:id on expand. */
+  classification_id: string | null;
   customs_value_usd_cents: number;
   duty: {
     base_usd_cents: number;
@@ -132,6 +135,7 @@ export async function buildBrokerQueue(ctx: AppContext, customerId: string): Pro
       chapter,
       source: r.source,
       last_classified_at: r.last_classified_at,
+      classification_id: r.current_classification_id,
       customs_value_usd_cents: value,
       duty: {
         base_usd_cents: duty.base_duty_usd_cents,
