@@ -26,9 +26,17 @@ const RerouteHub = z.object({
   note: z.string().min(8),
 });
 
+const Factory = z.object({
+  name: z.string().min(2),
+  city: z.string().min(2),
+  makes: z.string().min(3),
+  note: z.string().min(8),
+});
+
 export const RerouteIntelOutput = z.object({
   origin_hub: z.object({ city: z.string(), region: z.string(), lat: z.number(), lng: z.number() }),
   destination_hubs: z.array(RerouteHub).min(1).max(3),
+  notable_factories: z.array(Factory).min(1).max(8),
   blended_unit_cost_index: z.number().min(40).max(300), // China = 100
   avg_labor_cost_note: z.string().min(4),
   manufacturing_availability: z.enum(["high", "medium", "low"]),
@@ -68,6 +76,22 @@ const REPORT_SCHEMA = {
         required: ["hub_city", "hub_region", "lat", "lng", "feasibility", "example_suppliers", "note"],
       },
     },
+    notable_factories: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      description: "Specific, real, named factories/contract manufacturers in the destination that could make items from THIS catalog — prefer ones you confirmed via web search.",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "The factory / company name" },
+          city: { type: "string", description: "City or industrial park where it operates" },
+          makes: { type: "string", description: "Which of the catalog's product categories it makes (e.g. 'TWS earbuds & audio', 'injection-molded housewares')" },
+          note: { type: "string", description: "One concrete capability fact — scale, key customers, certifications" },
+        },
+        required: ["name", "city", "makes", "note"],
+      },
+    },
     blended_unit_cost_index: { type: "number", description: "Blended ex-works unit cost for THIS catalog at the destination, relative to China=100 (e.g. 104 = 4% pricier). Most low-cost countries 90–120." },
     avg_labor_cost_note: { type: "string", description: "Labor cost grounded in the World Bank data you pulled" },
     manufacturing_availability: { type: "string", enum: ["high", "medium", "low"], description: "Capacity/ecosystem availability for this catalog's categories" },
@@ -75,13 +99,13 @@ const REPORT_SCHEMA = {
     key_risks: { type: "array", items: { type: "string" }, description: "Top ramp/quality/origin risks of the move, each one short plain-text sentence (no markdown)" },
     summary: { type: "string", description: "At most 2 short sentences, plain text, no markdown or asterisks. Detail belongs in the structured fields, not here." },
   },
-  required: ["origin_hub", "destination_hubs", "blended_unit_cost_index", "avg_labor_cost_note", "manufacturing_availability", "lead_time_note", "key_risks", "summary"],
+  required: ["origin_hub", "destination_hubs", "notable_factories", "blended_unit_cost_index", "avg_labor_cost_note", "manufacturing_availability", "lead_time_note", "key_risks", "summary"],
 };
 
 const SYSTEM_PROMPT = `You are a supply-chain research analyst advising a US importer that is considering moving its CHINA-sourced catalog to another country to escape Section 301 tariffs. Research the named DESTINATION country for the catalog's product mix and produce a relocation brief, backed by RESEARCH not memory.
 
 Process:
-1. Use web_search to find where these product categories are actually manufactured in the destination country — name real clusters/cities and real contract manufacturers/OEMs. Search current freight/shipping availability and lead times from the destination to the US.
+1. Use web_search to find where these product categories are actually manufactured in the destination country — name real clusters/cities and real contract manufacturers/OEMs. Dig up SPECIFIC named factories (for notable_factories) with what they make and one concrete capability fact (scale, key customers, certifications). Search current freight/shipping availability and lead times from the destination to the US.
 2. Call world_bank_country_profile for the destination to ground labor-cost and capacity claims in real data (GDP/capita, manufacturing % of GDP, labor force).
 3. Call ${REPORT_TOOL} once with the brief.
 
@@ -101,6 +125,7 @@ export interface RerouteIntelResult {
   destination_name: string;
   origin_hub: RerouteIntelOutputT["origin_hub"];
   destination_hubs: RerouteIntelOutputT["destination_hubs"];
+  notable_factories: RerouteIntelOutputT["notable_factories"];
   blended_unit_cost_index: number;
   /** blended_unit_cost_index / 100 − 1, the premium the Policy Lab feeds into break-even. */
   unit_cost_premium_pct: number;
@@ -140,6 +165,7 @@ Research where this catalog could be made in ${input.destination_name} (named cl
     destination_name: input.destination_name,
     origin_hub: data.origin_hub,
     destination_hubs: data.destination_hubs.map((h) => ({ ...h, example_suppliers: h.example_suppliers.slice(0, 6) })),
+    notable_factories: data.notable_factories.slice(0, 8),
     blended_unit_cost_index: data.blended_unit_cost_index,
     unit_cost_premium_pct: Math.round((data.blended_unit_cost_index / 100 - 1) * 1000) / 1000,
     avg_labor_cost_note: data.avg_labor_cost_note,

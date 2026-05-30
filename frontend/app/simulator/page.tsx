@@ -19,6 +19,7 @@ interface RerouteIntel {
   destination_name: string;
   origin_hub: { city: string; region: string; lat: number; lng: number };
   destination_hubs: RerouteHub[];
+  notable_factories: { name: string; city: string; makes: string; note: string }[];
   blended_unit_cost_index: number;
   unit_cost_premium_pct: number;
   avg_labor_cost_note: string;
@@ -590,6 +591,27 @@ function DestinationIntel({ intel, appliedPct, onApply }: { intel: RerouteIntel;
           </div>
         ))}
       </div>
+
+      {/* Specific factories researched */}
+      {intel.notable_factories && intel.notable_factories.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted">
+            Factories researched ({intel.notable_factories.length})
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {intel.notable_factories.map((f, i) => (
+              <div key={i} className="rounded-md border border-cardline bg-white p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                  <span className="text-[13px] font-semibold text-navy">{f.name}</span>
+                  <span className="text-[10px] text-muted">{f.city}</span>
+                </div>
+                <div className="mt-0.5 inline-block rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-700">{f.makes}</div>
+                <p className="mt-1 text-[11px] leading-snug text-muted">{f.note.replace(/\*+/g, "")}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Risks + sources */}
       <div className="grid gap-4 md:grid-cols-2">
