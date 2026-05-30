@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API_BASE_URL, classNames, readNDJSON } from "@/lib/api";
 import { RichText } from "@/components/RichText";
 
@@ -51,9 +51,24 @@ export default function FactoryFinderPage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  // The product/country the current results were researched for (deep-dive uses these).
+  const [searched, setSearched] = useState<{ product: string; country: string } | null>(null);
+
+  // Prefill from ?product=&country= (wired from Catalog / Policy Lab).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const pq = q.get("product");
+    const cq = q.get("country");
+    if (pq) setProduct(pq);
+    if (cq) {
+      const m = COUNTRIES.find((c) => c.iso2 === cq.toUpperCase() || c.name.toLowerCase() === cq.toLowerCase());
+      if (m) setCountry(m);
+    }
+  }, []);
 
   const run = async () => {
     setErr(null); setBusy(true); setData(null); setStatus("Starting research…");
+    setSearched({ product, country: country.name });
     try {
       const r = await fetch(`${API_BASE_URL}/api/factory-finder`, {
         method: "POST",
@@ -141,7 +156,9 @@ export default function FactoryFinderPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            {data.factories.map((f, i) => <FactoryCard key={i} f={f} />)}
+            {data.factories.map((f, i) => (
+              <FactoryCard key={i} f={f} product={searched?.product ?? product} country={searched?.country ?? country.name} />
+            ))}
           </div>
 
           {data.sources.length > 0 && (
@@ -162,7 +179,7 @@ export default function FactoryFinderPage() {
   );
 }
 
-function FactoryCard({ f }: { f: Factory }) {
+function FactoryCard({ f, product, country }: { f: Factory; product: string; country: string }) {
   const rec = {
     temporary: { label: "Temporary bridge", tone: "bg-amber-100 text-amber-800" },
     long_term: { label: "Long-term partner", tone: "bg-accent text-white" },
@@ -227,8 +244,158 @@ function FactoryCard({ f }: { f: Factory }) {
             className="inline-block text-[11px] font-semibold text-accent-700 hover:underline">{f.website.replace(/^https?:\/\//, "")} →</a>
         )}
       </div>
+
+      <DeepDive factory={f} product={product} country={country} />
     </div>
   );
+}
+
+interface DeepDiveResult {
+  profile: {
+    overview: string;
+    founded: string | null;
+    ownership: string;
+    workforce_scale: string;
+    facilities: string;
+    product_capabilities: string[];
+    certifications: string[];
+    notable_customers: string[];
+    recent_developments: { period: string; note: string }[];
+    diligence_flags: { kind: "positive" | "watch" | "risk"; note: string }[];
+    engagement_fit: string;
+    draft_outreach: { subject: string; body: string };
+    confidence_note: string;
+  };
+  sources: { title: string; url: string }[];
+  research: { web_searches: number; world_bank_lookups: number };
+}
+
+function DeepDive({ factory, product, country }: { factory: Factory; product: string; country: string }) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<null | "loading" | DeepDiveResult>(null);
+  const [status, setStatus] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const run = async () => {
+    setOpen(true);
+    if (state && state !== "loading") return; // already loaded
+    setState("loading"); setErr(null); setStatus("Starting deep dive…");
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/factory-deepdive`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ factory_name: factory.name, city: factory.city, country_name: country, product_description: product }),
+      });
+      if (!r.ok || !r.body) { setErr(`backend ${r.status}`); setState(null); return; }
+      for await (const evt of readNDJSON(r)) {
+        const e = evt as { type: string; message?: string; result?: DeepDiveResult };
+        if (e.type === "status" && e.message) setStatus(e.message);
+        else if (e.type === "done" && e.result) setState(e.result);
+        else if (e.type === "error") { setErr(cleanErr(e.message ?? "deep dive failed")); setState(null); }
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e)); setState(null);
+    }
+  };
+
+  const res = state && state !== "loading" ? state : null;
+  const p = res ? res.profile : null;
+  const copyEmail = () => {
+    if (!p) return;
+    navigator.clipboard?.writeText(`Subject: ${p.draft_outreach.subject}\n\n${p.draft_outreach.body}`).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className="mt-3 border-t border-cardline pt-2">
+      <button onClick={() => (open ? setOpen(false) : run())}
+        className="flex w-full items-center justify-between text-[11px] font-semibold text-accent-700 transition hover:text-accent">
+        <span>{open ? "Hide deep dive" : "Deep dive — diligence + draft RFQ email"}</span>
+        <span className={classNames("transition", open && "rotate-90")}>›</span>
+      </button>
+
+      {open && (
+        <div className="mt-2">
+          {err && <div className="rounded-md border border-warn/40 px-2 py-1 text-[11px] text-warn">{err}</div>}
+          {state === "loading" && (
+            <div className="flex items-center gap-2 text-[11px] text-muted">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />{status}
+            </div>
+          )}
+          {p && (
+            <div className="space-y-3 text-[11px]">
+              <p className="text-navy">{p.overview.replace(/\*+/g, "")}</p>
+
+              <div className="grid grid-cols-2 gap-1.5 rounded-md bg-navy-50/40 p-2.5">
+                <KVm k="Founded" v={p.founded ?? "—"} />
+                <KVm k="Ownership" v={p.ownership} />
+                <KVm k="Workforce" v={p.workforce_scale} />
+                <KVm k="Facilities" v={p.facilities} />
+              </div>
+
+              {p.recent_developments.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">Recent developments</div>
+                  <ul className="mt-1 space-y-1">
+                    {p.recent_developments.map((d, i) => (
+                      <li key={i}><span className="font-medium text-navy">{d.period}:</span> <span className="text-muted">{d.note}</span></li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">Due-diligence flags</div>
+                <ul className="mt-1 space-y-1">
+                  {p.diligence_flags.map((d, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className={classNames("mt-1 h-1.5 w-1.5 shrink-0 rounded-full", d.kind === "risk" ? "bg-warn" : d.kind === "watch" ? "bg-amber-500" : "bg-accent")} />
+                      <span className="text-muted"><span className="font-medium capitalize text-navy">{d.kind}:</span> {d.note}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-md bg-navy-50/40 p-2.5">
+                <span className="font-semibold text-navy">How to engage: </span>
+                <span className="text-muted">{p.engagement_fit.replace(/\*+/g, "")}</span>
+              </div>
+
+              {/* Draft outreach email */}
+              <div className="rounded-md border border-accent/40 bg-white p-2.5">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-700">Draft outreach email</span>
+                  <button onClick={copyEmail} className="rounded border border-accent/40 px-2 py-0.5 text-[10px] font-semibold text-accent-700 hover:bg-accent-50">
+                    {copied ? "Copied ✓" : "Copy"}
+                  </button>
+                </div>
+                <div className="text-navy"><span className="text-muted">Subject:</span> {p.draft_outreach.subject}</div>
+                <pre className="mt-1 whitespace-pre-wrap font-sans text-[11px] leading-snug text-muted">{p.draft_outreach.body}</pre>
+              </div>
+
+              <p className="text-[10px] italic text-muted">{p.confidence_note.replace(/\*+/g, "")}</p>
+
+              {res && res.sources.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {res.sources.slice(0, 8).map((s, i) => {
+                    let host = s.url; try { host = new URL(s.url).hostname.replace(/^www\./, ""); } catch { /* keep */ }
+                    return <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" title={s.title}
+                      className="max-w-[12rem] truncate rounded-full border border-cardline px-1.5 py-0.5 text-[9px] text-accent-700 hover:bg-accent-50">{host}</a>;
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KVm({ k, v }: { k: string; v: string }) {
+  return <div><span className="text-muted">{k}:</span> <span className="text-navy">{v.replace(/\*+/g, "")}</span></div>;
 }
 
 function Signal({ label, value }: { label: string; value: string }) {

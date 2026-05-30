@@ -174,7 +174,7 @@ export default function CatalogPage() {
                               Analyzing relocation options, relief mechanisms, and second-order effects…
                             </div>
                           ) : (
-                            <IntelView intel={data} />
+                            <IntelView intel={data} product={row.description} />
                           )}
                         </td>
                       </tr>
@@ -190,7 +190,7 @@ export default function CatalogPage() {
   );
 }
 
-function IntelView({ intel }: { intel: Intel }) {
+function IntelView({ intel, product }: { intel: Intel; product: string }) {
   const best = intel.relocation_options[0];
   return (
     <div className="space-y-5 text-xs">
@@ -301,6 +301,12 @@ function IntelView({ intel }: { intel: Intel }) {
                 <div><span className="text-navy">Lead time:</span> {o.lead_time_note.replace(/\*+/g, "")}</div>
                 <div><span className="text-navy">MOQ:</span> {o.moq_note.replace(/\*+/g, "")}</div>
               </div>
+              <a
+                href={`/factory-finder?product=${encodeURIComponent(product)}&country=${o.country_iso2}`}
+                className="mt-2 inline-block rounded-md border border-accent/40 bg-white px-2 py-1 text-[10px] font-semibold text-accent-700 transition hover:bg-accent-50"
+              >
+                Vet specific factories in {o.country_name} →
+              </a>
             </div>
           ))}
         </div>

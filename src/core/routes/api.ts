@@ -36,6 +36,7 @@ import { analyzeReroute } from "@/core/agents/reroute-intel";
 import { buildBrokerQueue } from "@/core/lib/broker-queue";
 import { computeDeadlines } from "@/core/lib/deadlines";
 import { findFactories } from "@/core/agents/factory-finder";
+import { deepDiveFactory } from "@/core/agents/factory-deepdive";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import {
   MOCK_ENTRIES,
@@ -1391,6 +1392,46 @@ apiRoute.post("/factory-finder", async (c) => {
         country_iso2: iso,
         country_name: parsed.data.country_name ?? (COUNTRY_NAMES[iso] ?? iso),
       });
+      finished = true;
+      await emit({ type: "done", result });
+    } catch (e) {
+      finished = true;
+      await emit({ type: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+    await heartbeat;
+  });
+});
+
+// ── POST /api/factory-deepdive ───────────────────────────────────────────
+// Focused second-pass research on ONE named factory, plus a draft RFQ email.
+// Streams NDJSON (status heartbeats + final result).
+const FactoryDeepDiveBody = z.object({
+  factory_name: z.string().min(2),
+  city: z.string().min(1),
+  country_name: z.string().min(2),
+  product_description: z.string().min(3),
+});
+apiRoute.post("/factory-deepdive", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = FactoryDeepDiveBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  return stream(c, async (s) => {
+    c.header("content-type", "application/x-ndjson");
+    let chain: Promise<unknown> = Promise.resolve();
+    const emit = (o: unknown): Promise<unknown> => { chain = chain.then(() => s.write(JSON.stringify(o) + "\n")); return chain; };
+    await emit({ type: "status", message: `Researching ${parsed.data.factory_name}…` });
+    let finished = false;
+    const heartbeat = (async () => {
+      while (!finished) {
+        await new Promise((r) => setTimeout(r, 8000));
+        if (finished) break;
+        await emit({ type: "status", message: "Pulling ownership, facilities, customers, and risk signals…" });
+      }
+    })();
+    try {
+      const result = await deepDiveFactory(ctx, parsed.data);
       finished = true;
       await emit({ type: "done", result });
     } catch (e) {

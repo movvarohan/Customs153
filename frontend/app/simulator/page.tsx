@@ -412,6 +412,7 @@ export default function SimulatorPage() {
           )}
 
           {reIntel && <DestinationIntel intel={reIntel} appliedPct={sc.unit_cost_premium_pct}
+            product={data ? [...data.rows].sort((a, b) => b.annual_value_usd_cents - a.annual_value_usd_cents)[0]?.description ?? "" : ""}
             onApply={() => edit({ unit_cost_premium_pct: reIntel.unit_cost_premium_pct })} />}
         </div>
       )}
@@ -532,7 +533,7 @@ function destName(code: string | null): string {
   return REROUTE.find((r) => r.code === code)?.label.replace(/ \(.*\)$/, "") ?? code ?? "the destination";
 }
 
-function DestinationIntel({ intel, appliedPct, onApply }: { intel: RerouteIntel; appliedPct: number; onApply: () => void }) {
+function DestinationIntel({ intel, appliedPct, onApply, product }: { intel: RerouteIntel; appliedPct: number; onApply: () => void; product: string }) {
   const origin: MapPoint = { lat: intel.origin_hub.lat, lng: intel.origin_hub.lng, label: intel.origin_hub.city, sub: "China · current" };
   const hubs: MapPoint[] = intel.destination_hubs.map((h, i) => ({
     lat: h.lat, lng: h.lng, label: h.hub_city, sub: intel.destination_name, feasibility: h.feasibility, best: i === 0,
@@ -595,8 +596,16 @@ function DestinationIntel({ intel, appliedPct, onApply }: { intel: RerouteIntel;
       {/* Specific factories researched */}
       {intel.notable_factories && intel.notable_factories.length > 0 && (
         <div>
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted">
-            Factories researched ({intel.notable_factories.length})
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Factories researched ({intel.notable_factories.length})
+            </span>
+            <a
+              href={`/factory-finder?country=${intel.destination_iso2}${product ? `&product=${encodeURIComponent(product)}` : ""}`}
+              className="rounded-md border border-accent/40 bg-white px-2 py-0.5 text-[10px] font-semibold text-accent-700 transition hover:bg-accent-50"
+            >
+              Vet &amp; deep-dive factories in {intel.destination_name} →
+            </a>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             {intel.notable_factories.map((f, i) => (
