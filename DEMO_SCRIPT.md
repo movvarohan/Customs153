@@ -1,53 +1,70 @@
-# Customs Agent Suite — Demo Script (≈3:45)
+# Customs Agent Suite — Demo Script (≈4:20)
 
-**How to use:** read the **SAY** lines as voiceover while you perform the **SHOW** actions.
-Keep the screen *moving* (scroll slowly, don't freeze). Record at 1080p, app at `localhost:3000`.
-The demo data is pre-seeded and the workflow auto-pilot has already drafted filings, so everything is live.
+Built to answer the four required questions, with the live product as the backbone.
+Read the **SAY** lines as voiceover while you perform the **SHOW** actions. Keep the screen moving.
+
+**Where each question is answered (tell the grader up front, or use as chapter markers):**
+
+| Q | Topic | Time |
+|---|---|---|
+| **Q1** | Why we built it — bottlenecks & inspiration | 0:00 – 0:45 |
+| **Q2** | How it works — [1] research/method · [2] architecture · [3] agents | 0:45 – 2:55 |
+| **Q3** | Use cases, impact, who uses it | 2:55 – 3:40 |
+| **Q4** | What we'd add next | 3:40 – 4:20 |
 
 ---
 
-### 0:00 — Cold open  *(SHOW: the home page, full screen)*
-**SAY:** "Every year, U.S. importers overpay billions in customs duties — and most never find out. This is **Customs Agent Suite**: an AI system that does the work of a licensed customs broker, end to end."
+## Q1 — Why we built this  *(0:00 – 0:45)*
 
-### 0:12 — The problem & the wedge  *(SHOW: scroll the hero, then the "Why now" stats: 42% / ~14,500 / 5–15%)*
-**SAY:** "The timing is everything. Tariffs exploded in 2025 — Section 301, reciprocal duties, Section 232. **Forty-two percent** of customs penalties trace back to a single wrong product code. And there are only about **fourteen thousand** licensed brokers for millions of importers — the bottleneck is human. So we built an AI operations layer that *pairs* with a licensed broker: the AI does the analysis, the human certifies it. And the wedge is irresistible — send us six months of your entries, and we'll find the duty you overpaid, **for free**."
+**SHOW:** Home page; slowly scroll the hero and the "Why now" stats (42% / ~14,500 / 5–15%).
 
-### 0:40 — Command center  *(SHOW: scroll to the "Operations snapshot" dashboard; hover the tiles)*
-**SAY:** "Every importer lands on a live command center — annual duty exposure, classifications waiting on review, open refund windows, and the exact actions due today. One pane of glass over the entire operation."
+**SAY (hook):** "Every year, U.S. importers overpay billions in customs duties — and rack up penalties they never see coming. We built **Customs Agent Suite** to fix that."
 
-### 1:00 — The hero feature: refund audit  *(SHOW: open "Find refunds")*
-**SAY:** "This is what converts them. The agent re-classifies every historical line **from scratch** — applying the General Rules of Interpretation in their legal order — re-prices the duty under the correct code, and flags every overpayment. It outputs a polished savings report, typically recovering **five to fifteen percent** of the duty paid, pre-drafted as Post Summary Corrections, ready for a broker to file."
+**SAY (the bottlenecks we identified):** "We found three. **First, classification** — every imported product needs a precise ten-digit HTS code, and **forty-two percent** of customs penalties come from getting it wrong. It's legal reasoning, not a lookup. **Second, people** — there are only about **fourteen thousand** licensed customs brokers in the entire country, serving millions of importers; the expertise simply doesn't scale. **Third, timing** — tariffs exploded in 2025, Section 301, 232, reciprocal duties, and small importers have no way to keep up."
 
-### 1:25 — Autonomous workflow  *(SHOW: open "Workflow"; let the conveyor + auto-pilot panel + the 2 drafted approvals show)*
-**SAY:** "Once they're a customer, the whole lifecycle becomes one **autonomous conveyor** — ingest, security filing, customs entry, broker review, filing. A background agent fires every draft the instant its deadline approaches. Watch — with *zero* clicks, it has already assembled the ISF and the CBP **7501** entry from the importer's own data and routed them for approval. Days of broker paperwork, compressed to seconds — and every dollar figure is **deterministic**, never a hallucination."
+**SAY (the inspiration / key insight):** "The insight that started the project: you can't *legally* remove the licensed broker — but you can let an AI do the work and have the broker certify it. That one constraint is what makes this defensible, and it's exactly what no one was building for small importers."
 
-### 1:50 — Broker in the loop  *(SHOW: open "Broker queue"; click "Approve filing"; expand a classification to show the duty stack + flags)*
-**SAY:** "A licensed broker is always in the loop, because their signature is what makes a filing legal. Each line carries its real duty exposure, a confidence score, and risk flags — Section 301, anti-dumping. The broker approves, or opens the full duty stack and the **cited legal reasoning** behind every code. The AI does the work; the human stays accountable."
+---
 
-### 2:12 — Logistics coordination  *(SHOW: open "Coordination"; expand a shipment to reveal the milestone timeline)*
-**SAY:** "Brokerage is also coordination. We track every in-flight shipment across the forwarder, the carrier, the trucker, and the warehouse — and enforce the deadlines that cost real money: the security filing **before loading**, the entry **before arrival**, and the container's **last free day** before demurrage."
+## Q2 — How it works  *(0:45 – 2:55)*
 
-### 2:30 — Deadline intelligence  *(SHOW: open "Deadlines"; expand one entry's lifecycle bar)*
-**SAY:** "Customs is a game of clocks. Every entry has a correction window before liquidation, and a protest window after. We watch them all, so a recoverable refund never silently expires."
+### [1] Research & method  *(0:45 – 1:25)*
+**SHOW:** Open **Methodology** — the accuracy table, prompt versions, retrieval/eval.
 
-### 2:42 — Policy Lab  *(SHOW: open "Policy lab"; click the "301 + reciprocal stack" preset, then "Reshore to Vietnam"; scroll to the economics)*
-**SAY:** "For strategy, the Policy Lab simulates any tariff shock across the **entire catalog**, instantly. Stack a 301 hike with a reciprocal tariff — the duty bill rebuilds, line by line. Reroute to Vietnam, and it weighs the duty saved against the higher cost of goods: here, **over six hundred thousand dollars a year**, paying back in half a month. A CFO-grade decision in one click."
+**SAY:** "Let me be precise about how it works. We **don't train a model** — we build on frontier models: Claude for reasoning, Voyage embeddings for retrieval. Our research is in three places. **One, retrieval:** we embedded the entire U.S. tariff schedule and tens of thousands of CBP binding rulings into a vector index, so the classifier reasons over real law, not memory. **Two, evaluation:** we built a **gold-standard test set from actual CBP rulings** — each with a legally-correct code — and we grade every change: top-one and top-three accuracy, and a **hundred-percent citation-grounding rate** — no classification ships without a real, checkable source. **Three, prompt engineering, measured:** we versioned the classifier and ran a head-to-head model bake-off against that eval, so every improvement is proven, not guessed."
 
-### 3:05 — Sourcing & Factory Finder  *(SHOW: "Catalog" sourcing, then "Factory finder" with the researched cards)*
-**SAY:** "It even reasons about second-order effects — using **live web research** to find where production could move, naming real factories, grounding labor costs in World Bank data, and mapping landed cost across countries. The Factory Finder goes deeper, vetting specific factories: their certifications, whether they're even taking new clients, and whether each is a fast **tactical bridge** or a **long-term partner**."
+### [2] Product & architecture  *(1:25 – 2:00)*
+**SHOW:** Scroll the agent pipeline on Methodology; (optionally flash the repo structure).
 
-### 3:24 — Rigor & architecture  *(SHOW: open "Methodology"; show the accuracy table + the 10-agent pipeline)*
-**SAY:** "And none of this is a black box. We built a **gold-standard evaluation set** from real CBP rulings and grade every classification — top-one and top-three accuracy, with a **hundred-percent citation-grounding rate**. Ten specialized agents, behind a clean, swappable architecture that ports to the cloud without touching the business logic. Engineered for the **reasonable-care** standard the law actually demands."
+**SAY:** "Architecturally it's built clean. The business logic is **pure and infrastructure-agnostic**, behind typed interfaces — today it runs on Node, SQLite, and the filesystem; the *same code* ports to Cloudflare Workers, D1, and Vectorize by swapping adapters, not rewriting logic. And critically, the **duty math is a deterministic engine** — base rate, Section 301, Section 232, fees — with **no language model in the calculation**. So the dollar figures are always exact and auditable, never hallucinated."
 
-### 3:42 — Copilot & close  *(SHOW: open "Copilot"; type "What's the HTS code and landed duty for Bluetooth earbuds from China?" and send; let it answer)*
-**SAY:** "And it all collapses into a copilot. Ask in plain English — it classifies, prices, and cites the **actual CBP rulings** behind its answer. The work of a customs broker, done by AI, certified by a human. **That's Customs Agent Suite.**"
+### [3] Automation & agent systems  *(2:00 – 2:55)*
+**SHOW:** Open **Workflow** (auto-pilot panel + the two drafted approvals), then **Broker queue** — click "Approve filing," expand a classification to show the duty stack + cited reasoning.
+
+**SAY:** "The intelligence is a system of **ten specialized agents** — extraction, classification, duty calculation, refund-finding, sourcing research, and more — each a foundation-model call with **tools, structured output validated against a schema, and automatic retry**. Hard codes go through an **adversarial debate**: an advocate argues for the code, a challenger attacks it, a judge rules — and a separate verifier checks it against **live CBP rulings**. We don't fine-tune; reliability comes from grounding every claim in retrieval, deterministic math, and citations. Then it's orchestrated: a background scheduler runs the whole shipment lifecycle as an **autonomous conveyor** — watch, with *zero clicks* it's already drafted the security filing and the customs entry, and routed them here, to a licensed broker, who approves with the full reasoning in front of them. The AI does the work; a human is always accountable."
+
+---
+
+## Q3 — Use cases, impact & who uses it  *(2:55 – 3:40)*
+
+**SHOW:** Command center → **Policy Lab** (click "Reshore to Vietnam," show the economics) → **Factory Finder** cards.
+
+**SAY:** "Who is this for? The wedge is **Amazon FBA sellers and DTC brands importing from China** — importers too small to afford a great broker, but big enough to overpay badly. The impact is concrete: **recover five to fifteen percent** of duty paid, stop missing the correction and protest deadlines that quietly expire money, and make CFO-grade sourcing decisions under tariff volatility — like the Vietnam reroute here, **six hundred thousand dollars a year** in savings, mapped against real factories. Zoom out, and the societal value is real: it **democratizes scarce customs expertise**, raises compliance accuracy so fewer importers get penalized, and gives small businesses the supply-chain intelligence that today only the Fortune 500 can afford."
+
+---
+
+## Q4 — What we'd add next  *(3:40 – 4:20)*
+
+**SHOW:** **Copilot** — type *"What's the HTS code and landed duty for Bluetooth earbuds from China?"*, send, let it answer; end on the home dashboard.
+
+**SAY:** "Where it goes next. Near-term, we bring **filing fully in-house** with our own broker license and direct **ACE integration**, add real-time **carrier tracking**, and automate **drawback and export filings**. The long-term moat is a **data flywheel**: every broker correction makes our gold eval set larger and more proprietary — and eventually that becomes the training data to **fine-tune our own specialized customs model**. And it all collapses into a copilot you can just talk to — it classifies, prices, and **cites the actual CBP rulings** behind its answer. The work of a customs broker, done by AI, certified by a human. **That's Customs Agent Suite.**"
 
 ---
 
 ## Recording tips
 - **Tool:** OBS, ScreenStudio, Cap, or (Mac) QuickTime "New Screen Recording." Record the browser at **1920×1080**.
-- **Pacing:** keep scrolling slowly through each screen; never sit on a static frame for more than ~2s.
-- **Browser:** full-screen the app window, hide bookmarks bar, use the forwarded `localhost:3000`.
-- **Voice:** read at a measured, confident pace (~150 wpm). If you'd rather not record voice live, record silent video and add narration after.
-- **Trims if you need it shorter:** drop "Sourcing & Factory Finder" or "Coordination" to reach ~3:00; the rest still tells the full story.
-- **Data is ready:** auto-pilot has already drafted the ISF + 7501 into the Broker queue's "Filings" section, so the workflow story shows real output with no waiting.
+- **Pacing:** scroll slowly through each screen; never sit on a static frame more than ~2s.
+- **Browser:** full-screen the app, hide the bookmarks bar, use `localhost:3000`.
+- **Voice:** measured, confident, ~150 wpm. (Record silent and add narration after if you prefer.)
+- **Before you record:** open the **Workflow** page once (or click "Run automation") so the auto-pilot has the ISF + 7501 drafted into the Broker queue's **Filings** section — that makes the Q2 automation beat show real output.
+- **Need it shorter?** Trim the Factory Finder line in Q3 to reach ~3:45; the four answers still land in full.
