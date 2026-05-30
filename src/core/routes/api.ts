@@ -38,6 +38,7 @@ import { computeDeadlines } from "@/core/lib/deadlines";
 import { computeCoordination } from "@/core/lib/coordination";
 import { assembleIsf, assembleEntry, draftOutreach } from "@/core/agents/coordinator";
 import { insertFiling, listFilings, approveFiling } from "@/core/lib/filings";
+import { buildWorkflow, runWorkflow } from "@/core/lib/workflow";
 import { findFactories } from "@/core/agents/factory-finder";
 import { deepDiveFactory } from "@/core/agents/factory-deepdive";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
@@ -325,6 +326,19 @@ apiRoute.post("/filings/:id/approve", async (c) => {
   const ctx = c.var.ctx;
   const ok = await approveFiling(ctx, c.req.param("id"));
   return c.json({ ok });
+});
+
+// ── Workflow pipeline ─────────────────────────────────────────────────────
+// GET  /api/workflow      — pipeline state: each shipment's stage + next action.
+// POST /api/workflow/run  — auto-fire every due ISF/entry draft to the broker
+//                           filings queue (deterministic). Returns what fired.
+apiRoute.get("/workflow", async (c) => {
+  const ctx = c.var.ctx;
+  return c.json(await buildWorkflow(ctx));
+});
+apiRoute.post("/workflow/run", async (c) => {
+  const ctx = c.var.ctx;
+  return c.json(await runWorkflow(ctx));
 });
 
 // ── POST /api/process-invoice ─────────────────────────────────────────────

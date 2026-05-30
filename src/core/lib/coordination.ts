@@ -118,7 +118,10 @@ export function computeCoordination(importer: string, asOf: Date = new Date()): 
     // If the shipment is stuck on a milestone, treat that as the current step
     // even though its target date has passed (e.g. trucker congestion).
     const stuckIdx = t.stuck_at ? raw.findIndex((m) => m.key === t.stuck_at) : -1;
-    const firstUndoneIdx = stuckIdx >= 0 ? stuckIdx : raw.findIndex((m) => t0 < m.date);
+    const undoneIdx = raw.findIndex((m) => t0 < m.date);
+    // When every milestone is in the past, the chain is complete — treat the
+    // "first undone" index as past the end so all milestones read as done.
+    const firstUndoneIdx = stuckIdx >= 0 ? stuckIdx : undoneIdx === -1 ? raw.length : undoneIdx;
 
     const milestones: Milestone[] = raw.map((m, i) => {
       let status: MilestoneStatus;
