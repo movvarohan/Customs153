@@ -17,6 +17,32 @@ Read the **SAY** lines as voiceover while you perform the **SHOW** actions. Keep
 
 ---
 
+# ▶ 3-MINUTE CUT  *(~490 words — read at ~165 wpm)*
+
+Covers all four questions + the unique intelligence layer + business **and** platform roadmap. SHOW cues are in **[brackets]** and aren't spoken. The fuller ~5-minute version is below if you want it.
+
+**[SHOW: Home — hero + the "Why now" stats]**  *(Q1)*
+"Every year, U.S. importers pay over **eighty billion dollars** in tariffs — and **billions** in refunds they're owed go **unclaimed**, because no one's looking. We built **Customs Agent Suite** to fix three bottlenecks: classification is *legal reasoning*, and **forty-two percent** of customs penalties come from a wrong code; there are only **fourteen thousand** licensed brokers for millions of importers; and 2025's tariff explosion left small importers stranded. Our insight — you can't *legally* remove the broker, so **AI does the work, and the broker certifies it**."
+
+**[SHOW: Methodology — accuracy table + agent pipeline]**  *(Q2: research + architecture)*
+"How it works. The research is a **retrieval-augmented, evaluation-driven** system: we embedded the full tariff schedule and tens of thousands of CBP rulings into a **vector database**, so it reasons over real law; we built a **gold-standard benchmark** from those rulings and optimize against it — top-one and top-three accuracy, a **hundred-percent citation-grounding rate**; and every broker correction feeds a **per-customer memory** that sharpens it over time. The business logic sits behind **typed interfaces** — it ports to **Cloudflare** without a rewrite — and the duty math is a **deterministic engine**, so the dollars are exact, never hallucinated."
+
+**[SHOW: Workflow auto-pilot → Broker queue: approve a filing, expand the duty stack]**  *(Q2: agents)*
+"The intelligence is **ten specialized agents** with tools, schema-validated output, and retry; hard codes go through an **adversarial debate** — advocate, challenger, judge — verified against **live CBP rulings**. And it's autonomous: a background scheduler runs the whole shipment lifecycle, so with **zero clicks** it has already drafted the security filing and the **7501** entry and routed them to a licensed broker — who approves with the full reasoning in front of them."
+
+**[SHOW: Policy Lab reroute economics → Catalog landed-cost map → Factory Finder cards]**  *(the unique edge)*
+"What sets us apart: every other tool stops at filing. We built a **strategic intelligence layer** — a **Policy Lab** that simulates any tariff shock across your catalog; a **sourcing engine** that uses live web research to map where production could move, naming real factories and grounding labor costs in **World Bank data**; a **Factory Finder** that vets each one — certifications, open capacity, tactical bridge versus long-term partner — plus regulatory monitoring and a **control room** over the whole agent fleet. Not just *how to file* — *how to protect your margins as the rules change*."
+
+**[SHOW: Command center]**  *(Q3)*
+"It's for **Amazon FBA and DTC brands** importing from China — too small for a great broker, big enough to overpay. They **recover five to fifteen percent** of duty, stop billions going unclaimed, and never miss a deadline — customs expertise only the Fortune 500 could afford."
+
+**[SHOW: Copilot answering a question]**  *(Q4 + close)*
+"What's next, on two fronts. **Business:** our own broker license, direct ACE filing, carrier tracking, drawback automation. **Platform:** ship to Cloudflare — **Durable Objects** for agent memory, **Workflows** for a durable pipeline; turn the eval into a **CI gate**; route models and cache for cost; and **distill** the broker-corrected data into our own fine-tuned classifier. The work of a customs broker — done by AI, certified by a human. **That's Customs Agent Suite.**"
+
+---
+
+# Extended version (~5 min — same content, fuller wording, more SHOW detail)
+
 ## Q1 — Why we built this  *(0:00 – 0:50)*
 
 **SHOW:** Home page; slowly scroll the hero and the "Why now" stats (42% / ~14,500 / 5–15%).
