@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+import { SavingsReport } from "@/components/SavingsReport";
 
 interface PSCFindings {
   importer: string;
@@ -108,6 +109,7 @@ export default function FindRefundsPage() {
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
@@ -513,9 +515,15 @@ export default function FindRefundsPage() {
             </div>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <button
+                onClick={() => setShowReport(true)}
+                className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent-700"
+              >
+                View savings report
+              </button>
+              <button
                 onClick={downloadPdf}
                 disabled={downloading}
-                className="inline-flex items-center gap-2 rounded-md bg-accent px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent-700 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-md border border-cardline bg-white px-5 py-3 text-sm font-semibold text-navy shadow-sm hover:bg-navy-50 disabled:opacity-60"
               >
                 {downloading ? "Rendering PDF…" : "Download full report (PDF)"}
               </button>
@@ -637,6 +645,8 @@ export default function FindRefundsPage() {
           )}
         </>
       )}
+
+      {showReport && findings && <SavingsReport findings={findings} onClose={() => setShowReport(false)} />}
     </div>
   );
 }

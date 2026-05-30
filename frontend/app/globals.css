@@ -17,3 +17,12 @@ body {
 /* Subtle scroll bar in long lists */
 .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: #cfd8e3; border-radius: 6px; }
+
+/* Print: when a Savings Report overlay is open, print only the report. */
+@media print {
+  body { background: #fff; }
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+  .no-print { display: none !important; }
+}
