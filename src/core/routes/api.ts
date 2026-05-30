@@ -33,6 +33,7 @@ import { runCopilot } from "@/core/agents/copilot";
 import { runTariffSimulation } from "@/core/lib/tariff-simulator";
 import { analyzeSourcing } from "@/core/agents/sourcing-intel";
 import { analyzeReroute } from "@/core/agents/reroute-intel";
+import { buildBrokerQueue } from "@/core/lib/broker-queue";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import {
   MOCK_ENTRIES,
@@ -666,6 +667,16 @@ apiRoute.get("/broker/sku-memory", async (c) => {
   await seedSkuMemoryIfEmpty(ctx, customerId);
   const rows = await listSkuMemory(ctx, customerId);
   return c.json({ customer_id: customerId, rows });
+});
+
+// Enriched broker queue: each line with real duty exposure, classifier
+// confidence, and concrete review flags. Deterministic — no LLM.
+apiRoute.get("/broker/queue", async (c) => {
+  const ctx = c.var.ctx;
+  const customerId = await ensureDemoCustomer(ctx);
+  await seedSkuMemoryIfEmpty(ctx, customerId);
+  const queue = await buildBrokerQueue(ctx, customerId);
+  return c.json(queue);
 });
 
 const BrokerConfirmBody = z.object({
