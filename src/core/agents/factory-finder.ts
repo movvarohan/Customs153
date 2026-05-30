@@ -24,14 +24,14 @@ const Factory = z.object({
   city: z.string().min(2),
   region: z.string().min(2),
   website: z.string().nullable(),
-  product_lines: z.array(z.string().min(2)).min(1).max(8),
-  certifications: z.array(z.string().min(2)).max(10),
+  product_lines: z.array(z.string().min(2)).min(1).max(16),
+  certifications: z.array(z.string().min(2)).max(16),
   scale_note: z.string().min(8),
   accepting_new_clients: z.enum(["yes", "likely", "unknown", "no"]),
   available_capacity: z.enum(["open", "moderate", "tight", "unknown"]),
   onboarding_lead_time: z.string().min(4),
   moq_note: z.string().min(3),
-  key_customers: z.array(z.string().min(2)).max(8),
+  key_customers: z.array(z.string().min(2)).max(16),
   tactical_bridge_fit: z.enum(["high", "medium", "low"]),
   strategic_partner_fit: z.enum(["high", "medium", "low"]),
   recommendation: z.enum(["temporary", "long_term", "both", "neither"]),
@@ -43,7 +43,7 @@ export type FactoryT = z.infer<typeof Factory>;
 export const FactoryFinderOutput = z.object({
   search_summary: z.string().min(20),
   country_labor_note: z.string().min(8),
-  factories: z.array(Factory).min(2).max(8),
+  factories: z.array(Factory).min(2).max(14),
 });
 export type FactoryFinderOutputT = z.infer<typeof FactoryFinderOutput>;
 
@@ -119,6 +119,31 @@ export interface FactoryFinderResult {
   research: { web_searches: number; world_bank_lookups: number };
 }
 
+// LLMs drift on enum wording (e.g. "unlikely", "limited", "strong"). Coerce
+// enum-ish fields to the allowed set so a single odd word never throws away a
+// 2-minute research run.
+function coerce(v: unknown, allowed: string[], map: Record<string, string>, fallback: string): string {
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (allowed.includes(s)) return s;
+    if (map[s]) return map[s];
+  }
+  return fallback;
+}
+function normalizeFactories(raw: unknown): unknown {
+  const o = raw as { factories?: Array<Record<string, unknown>> };
+  if (o && Array.isArray(o.factories)) {
+    for (const f of o.factories) {
+      f.accepting_new_clients = coerce(f.accepting_new_clients, ["yes", "likely", "unknown", "no"], { unlikely: "no", possibly: "likely", maybe: "likely", probably: "likely", selective: "likely" }, "unknown");
+      f.available_capacity = coerce(f.available_capacity, ["open", "moderate", "tight", "unknown"], { limited: "tight", low: "tight", high: "open", medium: "moderate", constrained: "tight", ample: "open", full: "tight" }, "unknown");
+      f.tactical_bridge_fit = coerce(f.tactical_bridge_fit, ["high", "medium", "low"], { strong: "high", moderate: "medium", weak: "low" }, "medium");
+      f.strategic_partner_fit = coerce(f.strategic_partner_fit, ["high", "medium", "low"], { strong: "high", moderate: "medium", weak: "low" }, "medium");
+      f.recommendation = coerce(f.recommendation, ["temporary", "long_term", "both", "neither"], { bridge: "temporary", tactical: "temporary", longterm: "long_term", strategic: "long_term", none: "neither", no: "neither" }, "both");
+    }
+  }
+  return raw;
+}
+
 export async function findFactories(ctx: AppContext, input: FactoryFinderInput): Promise<FactoryFinderResult> {
   const user = `Product: ${input.product_description}
 Target country: ${input.country_name} (${input.country_iso2})
@@ -133,7 +158,7 @@ Find specific named factories that make this product in ${input.country_name}. F
     reportSchema: REPORT_SCHEMA,
     maxTokens: MAX_OUTPUT_TOKENS,
     parse: (raw) => {
-      const parsed = FactoryFinderOutput.safeParse(raw);
+      const parsed = FactoryFinderOutput.safeParse(normalizeFactories(raw));
       if (!parsed.success) throw new Error(`factory-finder: validation failed: ${parsed.error.message}`);
       return parsed.data;
     },
@@ -144,7 +169,7 @@ Find specific named factories that make this product in ${input.country_name}. F
     input,
     search_summary: data.search_summary,
     country_labor_note: data.country_labor_note,
-    factories: data.factories.map((f) => ({
+    factories: data.factories.slice(0, 8).map((f) => ({
       ...f,
       product_lines: f.product_lines.slice(0, 6),
       certifications: f.certifications.slice(0, 8),
