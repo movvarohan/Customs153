@@ -33,6 +33,7 @@ const GROUPS: Group[] = [
     label: "Broker & monitoring",
     items: [
       { href: "/broker", label: "Broker queue", desc: "Licensed-broker review & approval" },
+      { href: "/coordination", label: "Coordination", desc: "Inbound shipments: ISF, entry, drayage" },
       { href: "/deadlines", label: "Deadlines", desc: "Liquidation / PSC / protest windows" },
       { href: "/regulatory", label: "Reg watch", desc: "Federal Register / CSMS tariff alerts" },
       { href: "/audit-broker", label: "Audit broker", desc: "Guided ACE portal data pull" },

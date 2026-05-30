@@ -35,6 +35,7 @@ import { analyzeSourcing } from "@/core/agents/sourcing-intel";
 import { analyzeReroute } from "@/core/agents/reroute-intel";
 import { buildBrokerQueue } from "@/core/lib/broker-queue";
 import { computeDeadlines } from "@/core/lib/deadlines";
+import { computeCoordination } from "@/core/lib/coordination";
 import { findFactories } from "@/core/agents/factory-finder";
 import { deepDiveFactory } from "@/core/agents/factory-deepdive";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
@@ -225,6 +226,15 @@ apiRoute.get("/deadlines", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
+});
+
+// ── GET /api/coordination ─────────────────────────────────────────────────
+// Inbound shipment coordination: each in-flight shipment's milestone chain
+// (forwarder → carrier → broker → CBP → trucker → warehouse), where it sits
+// today, the next action + owner, and at-risk hard deadlines. Deterministic.
+apiRoute.get("/coordination", (c) => {
+  const result = computeCoordination("Atlas Retail Holdings LLC", new Date());
+  return c.json(result);
 });
 
 // ── POST /api/process-invoice ─────────────────────────────────────────────
