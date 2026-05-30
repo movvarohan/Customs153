@@ -26,6 +26,7 @@ const GROUPS: Group[] = [
       { href: "/control-room", label: "Control room", desc: "Watch the agent fleet work in real time" },
       { href: "/simulator", label: "Policy lab", desc: "Model tariff shocks across the catalog" },
       { href: "/catalog", label: "Catalog", desc: "Portfolio duty + sourcing strategy" },
+      { href: "/factory-finder", label: "Factory finder", desc: "Vet named factories: capacity, horizon" },
     ],
   },
   {

@@ -35,6 +35,7 @@ import { analyzeSourcing } from "@/core/agents/sourcing-intel";
 import { analyzeReroute } from "@/core/agents/reroute-intel";
 import { buildBrokerQueue } from "@/core/lib/broker-queue";
 import { computeDeadlines } from "@/core/lib/deadlines";
+import { findFactories } from "@/core/agents/factory-finder";
 import { runTariffWatch } from "@/core/agents/tariff-monitor";
 import {
   MOCK_ENTRIES,
@@ -1347,6 +1348,57 @@ apiRoute.post("/quote", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
+});
+
+// ── POST /api/factory-finder ─────────────────────────────────────────────
+// Deep agentic factory research: named factories with capabilities, openings,
+// and a temporary-vs-long-term horizon assessment.
+const FactoryFinderBody = z.object({
+  product_description: z.string().min(3),
+  country_iso2: z.string().regex(/^[A-Z]{2}$/),
+  country_name: z.string().optional(),
+});
+apiRoute.post("/factory-finder", async (c) => {
+  const ctx = c.var.ctx;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "request body must be valid JSON" }, 400); }
+  const parsed = FactoryFinderBody.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+  const iso = parsed.data.country_iso2.toUpperCase();
+
+  // Stream NDJSON: the research takes 60–90s, longer than a buffering proxy
+  // will hold an idle connection. An immediate status + periodic heartbeats
+  // keep the connection alive; the result arrives in a final "done" event.
+  return stream(c, async (s) => {
+    c.header("content-type", "application/x-ndjson");
+    let chain: Promise<unknown> = Promise.resolve();
+    const emit = (o: unknown): Promise<unknown> => {
+      chain = chain.then(() => s.write(JSON.stringify(o) + "\n"));
+      return chain;
+    };
+    await emit({ type: "status", message: `Searching for factories in ${parsed.data.country_name ?? iso}…` });
+    let finished = false;
+    const heartbeat = (async () => {
+      while (!finished) {
+        await new Promise((r) => setTimeout(r, 8000));
+        if (finished) break;
+        await emit({ type: "status", message: "Researching capabilities, capacity, and customers…" });
+      }
+    })();
+    try {
+      const result = await findFactories(ctx, {
+        product_description: parsed.data.product_description,
+        country_iso2: iso,
+        country_name: parsed.data.country_name ?? (COUNTRY_NAMES[iso] ?? iso),
+      });
+      finished = true;
+      await emit({ type: "done", result });
+    } catch (e) {
+      finished = true;
+      await emit({ type: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+    await heartbeat;
+  });
 });
 
 void z; // keep zod import even if no top-level uses inside this file
