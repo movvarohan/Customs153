@@ -154,8 +154,11 @@ apiRoute.get("/methodology", async (c) => {
 
 // ── GET /api/audit-log ───────────────────────────────────────────────────
 // Recent classification audit records — the reasonable-care binder. Each
-// row carries the model + prompt version, the predicted code, GRI rule,
-// confidence, citations, and timestamp.
+// row carries the full machine-checkable record of one classification: the
+// product facts the classifier was given, the tariff notes (top retrieved
+// candidates) considered, the CBP rulings cited, the competing codes
+// considered with the reasons each was rejected, the GRI rule applied, the
+// reasoning text, plus the model + prompt version + timestamp.
 apiRoute.get("/audit-log", async (c) => {
   const ctx = c.var.ctx;
   const limit = Math.min(Number(c.req.query("limit") ?? "40") || 40, 100);
@@ -169,7 +172,12 @@ apiRoute.get("/audit-log", async (c) => {
     let parsed: Record<string, unknown> = {};
     try { parsed = JSON.parse(r.payload_json) as Record<string, unknown>; } catch { /* keep empty */ }
     const result = (parsed.result ?? {}) as Record<string, unknown>;
-    const candidates = (parsed.candidates ?? []) as Array<{ htsCode: string; score: number }>;
+    const candidates = (parsed.candidates ?? []) as Array<{ htsCode: string; score: number; description?: string; fullPath?: string }>;
+    const userMessage = typeof parsed.userMessage === "string" ? (parsed.userMessage as string) : "";
+    // Pull the importer's product-description block out of the user message
+    // (it's wrapped in triple quotes — see classifier.buildUserMessage).
+    const descMatch = userMessage.match(/Product description from the importer:\s*"""([\s\S]*?)"""/);
+    const product_description = descMatch?.[1]?.trim() ?? null;
     return {
       id: r.id,
       occurred_at: r.occurred_at,
@@ -182,9 +190,17 @@ apiRoute.get("/audit-log", async (c) => {
       confidence: result.confidence ?? null,
       precision_level: result.precision_level ?? null,
       citations: (result.citations ?? []) as string[],
+      alternatives_considered: (result.alternative_codes_considered ?? []) as Array<{ hts_code: string; rejected_because: string }>,
+      missing_inputs_for_precision: (result.missing_inputs_for_precision ?? []) as string[],
       validation_warning: result.validation_warning ?? null,
+      product_description,
       candidate_count: candidates.length,
       top_candidate: candidates[0]?.htsCode ?? null,
+      top_candidates: candidates.slice(0, 6).map((cand) => ({
+        hts_code: cand.htsCode,
+        score: cand.score,
+        description: cand.description ?? "",
+      })),
       reasoning: result.reasoning ?? null,
     };
   });

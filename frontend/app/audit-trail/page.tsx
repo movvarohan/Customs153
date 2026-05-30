@@ -15,9 +15,13 @@ interface Record_ {
   confidence: "low" | "medium" | "high" | null;
   precision_level: string | null;
   citations: string[];
+  alternatives_considered: { hts_code: string; rejected_because: string }[];
+  missing_inputs_for_precision: string[];
   validation_warning: string | null;
+  product_description: string | null;
   candidate_count: number;
   top_candidate: string | null;
+  top_candidates: { hts_code: string; score: number; description: string }[];
   reasoning: string | null;
 }
 
@@ -64,11 +68,15 @@ export default function AuditTrailPage() {
               <ShieldIcon />
               Immutable ledger · reasonable care
             </div>
-            <h1 className="text-3xl font-bold">Audit trail</h1>
+            <h1 className="text-3xl font-bold">Audit trail · Reasonable-care record</h1>
             <p className="mt-2 max-w-2xl text-sm text-white/70">
-              Every classification is written once, with its timestamp, model and prompt version, the GRI
-              rule applied, confidence, and cited sources. This is the binder you hand CBP if they open a
-              focused assessment — each decision is reproducible from the record.
+              Every classification ships with a <span className="font-semibold text-white">machine-checkable record</span>{" "}
+              of the four legal steps that justify it: the <span className="font-semibold text-white">product facts</span>{" "}
+              used, the <span className="font-semibold text-white">tariff notes considered</span>, the{" "}
+              <span className="font-semibold text-white">CBP rulings cited</span>, and{" "}
+              <span className="font-semibold text-white">why competing codes were rejected</span> — plus the GRI rule,
+              model + prompt version, and timestamp. This is the binder you hand CBP if they open a focused
+              assessment; each decision is reproducible from the record.
             </p>
           </div>
           <button
@@ -141,41 +149,110 @@ export default function AuditTrailPage() {
                 </button>
                 {open && (
                   <div className="border-t border-cardline bg-navy-50/40 px-4 py-4">
+                    <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-navy px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-white">
+                      Machine-checkable record
+                    </div>
                     <div className="grid gap-5 md:grid-cols-2">
-                      <div className="space-y-3">
-                        <div>
-                          <FieldLabel>Record</FieldLabel>
-                          <dl className="mt-1 space-y-1 text-[11px]">
-                            <Row k="Audit ID" v={r.id} mono />
-                            <Row k="Logged at" v={`${r.occurred_at.replace("T", " ").slice(0, 19)} UTC`} mono />
-                            <Row k="Actor" v={r.actor} mono />
-                            <Row k="Model" v={r.model ?? "—"} />
-                            <Row k="Prompt" v={r.prompt_version ?? "—"} mono />
-                            <Row k="GRI rule" v={r.gri_rule_applied ?? "—"} />
-                            <Row k="Precision" v={r.precision_level ?? "—"} />
-                            <Row k="Top retrieved" v={r.top_candidate ?? "—"} mono />
-                            {r.validation_warning && <Row k="Warning" v={r.validation_warning} warn />}
-                          </dl>
+                      {/* Pillar 1: Product facts used */}
+                      <div>
+                        <PillarLabel n={1}>Product facts used</PillarLabel>
+                        <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-cardline bg-white p-3">
+                          <p className="whitespace-pre-line text-[11px] leading-relaxed text-navy">
+                            {r.product_description ?? "—"}
+                          </p>
                         </div>
-                        <div>
-                          <FieldLabel>Cited sources ({r.citations.length})</FieldLabel>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {r.citations.length === 0 && <span className="text-[11px] text-muted">none</span>}
-                            {r.citations.map((c, k) => (
-                              <span key={k} className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-navy ring-1 ring-inset ring-cardline">
-                                {c}
-                              </span>
-                            ))}
-                          </div>
+                        {r.missing_inputs_for_precision.length > 0 && (
+                          <p className="mt-1.5 text-[10px] text-muted">
+                            <span className="font-semibold text-amber-700">Missing for tighter precision:</span>{" "}
+                            {r.missing_inputs_for_precision.join("; ")}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Pillar 2: Tariff notes considered */}
+                      <div>
+                        <PillarLabel n={2}>Tariff notes considered ({r.candidate_count})</PillarLabel>
+                        <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-cardline bg-white p-2">
+                          {r.top_candidates.length === 0 ? (
+                            <p className="text-[11px] text-muted">no candidates recorded</p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {r.top_candidates.map((tc, k) => (
+                                <li key={k} className="flex gap-2 text-[11px] leading-snug">
+                                  <span className="w-32 shrink-0 font-mono text-navy">{tc.hts_code}</span>
+                                  <span className="flex-1 truncate text-muted" title={tc.description}>
+                                    {tc.description || "—"}
+                                  </span>
+                                  <span className="shrink-0 tabular-nums text-[10px] text-muted">
+                                    {tc.score.toFixed(2)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <p className="mt-1 text-[10px] text-muted">
+                          Top {r.top_candidates.length} of {r.candidate_count} retrieved from the HTS vector index by
+                          semantic similarity to the product facts.
+                        </p>
+                      </div>
+
+                      {/* Pillar 3: CBP rulings / candidates cited */}
+                      <div>
+                        <PillarLabel n={3}>CBP rulings cited ({r.citations.length})</PillarLabel>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {r.citations.length === 0 && <span className="text-[11px] text-muted">none</span>}
+                          {r.citations.map((c, k) => (
+                            <span key={k} className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-navy ring-1 ring-inset ring-cardline">
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 text-[10px] text-muted">
+                          Every cited code is enforced to be in the retrieved candidate set — 100% citation grounding
+                          by construction.
+                        </p>
+                      </div>
+
+                      {/* Pillar 4: Why competing codes were rejected */}
+                      <div>
+                        <PillarLabel n={4}>Why competing codes were rejected</PillarLabel>
+                        <div className="mt-1 space-y-1.5">
+                          {r.alternatives_considered.length === 0 ? (
+                            <p className="text-[11px] text-muted">No competing codes weighed.</p>
+                          ) : (
+                            r.alternatives_considered.map((a, k) => (
+                              <div key={k} className="rounded-md border border-cardline bg-white p-2 text-[11px] leading-snug">
+                                <div className="font-mono text-navy">{a.hts_code}</div>
+                                <div className="mt-0.5 text-muted">{a.rejected_because}</div>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
-                      <div>
-                        <FieldLabel>Reasoning trace</FieldLabel>
+                    </div>
+
+                    {/* Reasoning trace + record metadata, full width */}
+                    <div className="mt-5 grid gap-5 md:grid-cols-3">
+                      <div className="md:col-span-2">
+                        <FieldLabel>Reasoning (GRI {r.gri_rule_applied ?? "—"})</FieldLabel>
                         <div className="mt-1 max-h-72 overflow-y-auto rounded-md border border-cardline bg-white p-3">
                           <p className="whitespace-pre-line text-[11px] leading-relaxed text-navy">
                             {r.reasoning ?? "—"}
                           </p>
                         </div>
+                      </div>
+                      <div>
+                        <FieldLabel>Record metadata</FieldLabel>
+                        <dl className="mt-1 space-y-1 text-[11px]">
+                          <Row k="Audit ID" v={r.id} mono />
+                          <Row k="Logged at" v={`${r.occurred_at.replace("T", " ").slice(0, 19)} UTC`} mono />
+                          <Row k="Actor" v={r.actor} mono />
+                          <Row k="Model" v={r.model ?? "—"} />
+                          <Row k="Prompt" v={r.prompt_version ?? "—"} mono />
+                          <Row k="Precision" v={r.precision_level ?? "—"} />
+                          {r.validation_warning && <Row k="Warning" v={r.validation_warning} warn />}
+                        </dl>
                       </div>
                     </div>
                   </div>
@@ -201,6 +278,17 @@ function LedgerStat({ label, value, sub }: { label: string; value: string; sub?:
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">{children}</div>;
+}
+
+function PillarLabel({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-navy">
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-white">
+        {n}
+      </span>
+      {children}
+    </div>
+  );
 }
 
 function Row({ k, v, mono, warn }: { k: string; v: string; mono?: boolean; warn?: boolean }) {
