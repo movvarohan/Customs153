@@ -76,8 +76,13 @@ export async function seedSkuMemoryIfEmpty(ctx: AppContext, customerId: string):
   if (existing && Number(existing.n) > 0) {
     // SKUs already exist — but a fresh DB before this commit will have null
     // classification_id on every seed row. Backfill the hand-crafted traces
-    // for any SKU that hasn't been wired up yet (idempotent).
-    await seedClassificationTraces(ctx, customerId);
+    // for any SKU that hasn't been wired up yet (idempotent). Non-fatal: a
+    // backfill error must never take down the broker queue.
+    try {
+      await seedClassificationTraces(ctx, customerId);
+    } catch (e) {
+      console.warn(`[sku-memory] seedClassificationTraces failed (non-fatal): ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+    }
     return;
   }
   for (const r of SEED_ROWS) {
@@ -89,7 +94,11 @@ export async function seedSkuMemoryIfEmpty(ctx: AppContext, customerId: string):
       source: r.source,
     });
   }
-  await seedClassificationTraces(ctx, customerId);
+  try {
+    await seedClassificationTraces(ctx, customerId);
+  } catch (e) {
+    console.warn(`[sku-memory] seedClassificationTraces failed (non-fatal): ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+  }
 }
 
 /**

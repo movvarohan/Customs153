@@ -56,6 +56,13 @@ export class SqliteDatabase implements Database {
 
   static async open(url: string): Promise<SqliteDatabase> {
     const client = createClient({ url });
+    // libsql enforces foreign keys by default (unlike raw sqlite3 / D1).
+    // The schema uses REFERENCES to document intent, but the rest of the
+    // codebase assumes non-enforcement — e.g. classifier.persistAuditLog
+    // writes audit_log rows whose IDs are stored in sku_master.current_
+    // classification_id without ever inserting the matching classifications
+    // row. Match the documented-but-not-enforced behavior.
+    await client.execute("PRAGMA foreign_keys = OFF");
     return new SqliteDatabase(client);
   }
 

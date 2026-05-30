@@ -245,15 +245,34 @@ const TRACES: SeedTrace[] = [
  */
 export async function seedClassificationTraces(ctx: AppContext, customerId: string): Promise<void> {
   for (const t of TRACES) {
-    // Find the SKU row by canonical description.
-    const sku = await ctx.db
-      .prepare(
-        "SELECT sku, current_classification_id FROM sku_master WHERE customer_id = ? AND lower(canonical_description) = ? LIMIT 1",
-      )
-      .bind(customerId, t.description.trim().toLowerCase())
-      .first<{ sku: string; current_classification_id: string | null }>();
-    if (!sku) continue;
-    if (sku.current_classification_id) continue; // already backfilled
+    try {
+      await seedOne(ctx, customerId, t);
+    } catch (e) {
+      // One bad trace must not block the others or the route. Surface the
+      // error in stdout so we can fix the seed payload without crashing.
+      console.warn(
+        `[seed-classification-traces] failed for "${t.description.slice(0, 40)}…": ${
+          e instanceof Error ? e.stack ?? e.message : String(e)
+        }`,
+      );
+    }
+  }
+}
+
+async function seedOne(
+  ctx: AppContext,
+  customerId: string,
+  t: SeedTrace,
+): Promise<void> {
+  // Find the SKU row by canonical description.
+  const sku = await ctx.db
+    .prepare(
+      "SELECT sku, current_classification_id FROM sku_master WHERE customer_id = ? AND lower(canonical_description) = ? LIMIT 1",
+    )
+    .bind(customerId, t.description.trim().toLowerCase())
+    .first<{ sku: string; current_classification_id: string | null }>();
+  if (!sku) return;
+  if (sku.current_classification_id) return; // already backfilled
 
     const classificationId = randomUUID();
     const occurredAt = new Date(Date.now() - Math.floor(Math.random() * 36) * 60 * 60 * 1000).toISOString();
@@ -327,10 +346,9 @@ Apply the GRI sequence and call the report_classification tool.`;
       .bind(auditRowId, occurredAt, actor, "classification", classificationId, "classify", JSON.stringify(trace))
       .run();
 
-    // Wire the SKU to the trace.
-    await ctx.db
-      .prepare("UPDATE sku_master SET current_classification_id = ? WHERE customer_id = ? AND sku = ?")
-      .bind(classificationId, customerId, sku.sku)
-      .run();
-  }
+  // Wire the SKU to the trace.
+  await ctx.db
+    .prepare("UPDATE sku_master SET current_classification_id = ? WHERE customer_id = ? AND sku = ?")
+    .bind(classificationId, customerId, sku.sku)
+    .run();
 }

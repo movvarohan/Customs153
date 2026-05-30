@@ -213,12 +213,16 @@ apiRoute.get("/audit-log", async (c) => {
 apiRoute.get("/audit-log/:id", async (c) => {
   const ctx = c.var.ctx;
   const id = c.req.param("id");
+  // The public-facing ID is the *classification's* id, which is stored in
+  // audit_log.entity_id (not audit_log.id — that's a separate row UUID).
+  // sku_master.current_classification_id references the same value, so we
+  // join on entity_id.
   const row = await ctx.db
     .prepare(
-      "SELECT id, occurred_at, actor, entity_kind, action, payload_json FROM audit_log WHERE id = ? AND entity_kind = 'classification' LIMIT 1",
+      "SELECT id, occurred_at, actor, entity_kind, entity_id, action, payload_json FROM audit_log WHERE entity_id = ? AND entity_kind = 'classification' ORDER BY occurred_at DESC LIMIT 1",
     )
     .bind(id)
-    .first<{ id: string; occurred_at: string; actor: string; entity_kind: string; action: string; payload_json: string }>();
+    .first<{ id: string; occurred_at: string; actor: string; entity_kind: string; entity_id: string; action: string; payload_json: string }>();
   if (!row) return c.json({ error: "not_found" }, 404);
   let parsed: Record<string, unknown> = {};
   try { parsed = JSON.parse(row.payload_json) as Record<string, unknown>; } catch { /* empty */ }
@@ -229,7 +233,7 @@ apiRoute.get("/audit-log/:id", async (c) => {
   const product_description = descMatch?.[1]?.trim() ?? null;
   return c.json({
     record: {
-      id: row.id,
+      id: row.entity_id, // public-facing = classification id, matches sku_master.current_classification_id
       occurred_at: row.occurred_at,
       actor: row.actor,
       model: parsed.model ?? null,
