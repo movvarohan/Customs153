@@ -4,7 +4,7 @@
 
 > **One-line pitch for an importer:** *"Send your last six months of entries. The refund finder reclassifies every line, surfaces what's recoverable, and flags the deadline before it expires — then we handle your next shipment for the same price as your current broker, with full transparency."*
 
-🎥 **Demo video:** `customs-agent-demo.mp4` (in the repo) · [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) is the teleprompter cut.
+🎥 **Demo video:** `customs-agent-demo.mp4` (in the repo).
 📐 **Architecture deep-dive:** [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) · **Source credits:** [`docs/SOURCES.md`](./docs/SOURCES.md) · **Product spec:** [`CLAUDE.md`](./CLAUDE.md)
 
 ---
@@ -240,7 +240,7 @@ No code was forked from existing customs-tech repos. The product, architecture, 
 | If you want… | Start here |
 |---|---|
 | **The two-minute version** | This README. |
-| **The three-minute demo** | `customs-agent-demo.mp4` + [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md). |
+| **The three-minute demo** | `customs-agent-demo.mp4`. |
 | **The product vision & long-term roadmap** | [`CLAUDE.md`](./CLAUDE.md). |
 | **The architecture rationale** | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). |
 | **What's the classifier actually doing?** | [`src/core/agents/classifier.ts`](./src/core/agents/classifier.ts) (start at line 274 `classify`); the system prompt in [`src/core/agents/prompts/`](./src/core/agents/prompts). |
