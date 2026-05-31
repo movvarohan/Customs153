@@ -1070,7 +1070,7 @@ function AuditDefensePanel({
                   {q.strength}
                 </span>
               </div>
-              <p className="mt-1 text-navy">{q.answer}</p>
+              <RichText text={q.answer} className="mt-1 text-navy" />
               {q.citations.length > 0 && (
                 <div className="mt-1 text-[11px] text-muted">
                   Cites:{" "}
@@ -1216,7 +1216,7 @@ function DebatePanel({
                 </span>
               )}
             </div>
-            <p className="text-navy">{data.judge.rationale}</p>
+            <RichText text={data.judge.rationale} className="text-navy" />
             {data.judge.citations.length > 0 && (
               <div className="mt-1.5 text-[11px] text-muted">
                 Cites:{" "}

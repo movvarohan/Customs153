@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API_BASE_URL, classNames } from "@/lib/api";
+import { RichText } from "@/components/RichText";
 
 interface Summary {
   gold_set: {
@@ -206,7 +207,7 @@ export default function MethodologyPage() {
           {/* Model bakeoff */}
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-widest text-muted">Model bake-off</h2>
-            <p className="mb-3 max-w-2xl text-sm text-muted">{s.model_bakeoff.summary}</p>
+            <RichText text={s.model_bakeoff.summary} className="mb-3 max-w-2xl text-sm text-muted" />
             <div className="overflow-hidden rounded-card border border-cardline bg-white shadow-card">
               <table className="w-full text-sm">
                 <thead>
@@ -234,7 +235,7 @@ export default function MethodologyPage() {
           <section className="grid gap-6 md:grid-cols-2">
             <div className="rounded-card border border-cardline bg-white p-5 shadow-card">
               <h3 className="text-sm font-semibold text-navy">Retrieval diagnostic</h3>
-              <p className="mt-1 text-xs text-muted">{s.retrieval_diagnostic.summary}</p>
+              <RichText text={s.retrieval_diagnostic.summary} className="mt-1 text-xs text-muted" />
               <div className="mt-3 flex gap-4">
                 <Stat label="Retrieved the answer" value={`${s.retrieval_diagnostic.retrieval_surfaced_it}/37`} />
                 <Stat label="Missed entirely" value={`${s.retrieval_diagnostic.retrieval_missed_it}/37`} />

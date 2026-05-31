@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
+import { RichText } from "@/components/RichText";
 
 type Status = "queued" | "running" | "done" | "error";
 
@@ -183,8 +184,10 @@ export default function ControlRoomPage() {
               {running && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden />}
               Classifier reasoning (live)
             </div>
-            <div ref={reasonRef} className="max-h-[420px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-snug text-navy">
-              {reasoning || <span className="text-muted">Reasoning will stream here as the classifier thinks…</span>}
+            <div ref={reasonRef} className="max-h-[420px] overflow-y-auto break-words text-[11px] text-navy">
+              {reasoning
+                ? <RichText text={reasoning} className="text-[11px] text-navy" />
+                : <span className="text-muted">Reasoning will stream here as the classifier thinks…</span>}
             </div>
           </div>
           {dossier && (

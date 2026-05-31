@@ -615,7 +615,7 @@ function DestinationIntel({ intel, appliedPct, onApply, product }: { intel: Rero
                   <span className="text-[10px] text-muted">{f.city}</span>
                 </div>
                 <div className="mt-0.5 inline-block rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-700">{f.makes}</div>
-                <p className="mt-1 text-[11px] leading-snug text-muted">{f.note.replace(/\*+/g, "")}</p>
+                <RichText text={f.note} className="mt-1 text-[11px] text-muted" />
               </div>
             ))}
           </div>
@@ -660,7 +660,7 @@ function Stat2({ label, value, accent }: { label: string; value: string; accent?
   return (
     <div className="rounded-md border border-cardline bg-white p-3">
       <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
-      <div className={classNames("mt-0.5 text-[11px]", accent ? "font-semibold capitalize text-accent-700" : "text-navy")}>{value.replace(/\*+/g, "")}</div>
+      <RichText text={value} className={classNames("mt-0.5 text-[11px]", accent ? "font-semibold capitalize text-accent-700" : "text-navy")} inline />
     </div>
   );
 }

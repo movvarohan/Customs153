@@ -14,8 +14,18 @@ import { Fragment, type ReactNode } from "react";
 // hyphen-bullet runs (" - X - Y") to real newline-prefixed bullets.
 function normalise(text: string): string {
   let t = text.trim();
+  // Strip raw HTML entities the LLM occasionally emits literally.
+  t = t.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+  // Strip leading `## Heading` / `### Heading` markers when they appear
+  // mid-text (no leading newline). Promote to their own paragraph as plain
+  // text so they read as a header line.
+  t = t.replace(/(?<=\S)\s+(?=#{1,6}\s+\S)/g, "\n\n");
+  t = t.replace(/^#{1,6}\s+/gm, "");
   // "Step N: ", "Step N — ", "Step N. ", "Step N - " (with hyphen + space)
   t = t.replace(/(?<=\S)\s+(?=Step\s+\d+\s*(?::|—|\.\s+|-\s))/g, "\n\n");
+  // Inline numbered run-on: "1. First. 2. Second. 3. Third." — split when a
+  // sentence-final period is followed by a 1-2 digit + period + space + cap.
+  t = t.replace(/(?<=\.|\?|!)\s+(?=\d{1,2}\.\s+[A-Z])/g, "\n");
   // Inline " - <text>" bullets. Only treat as a bullet when the item starts
   // with something that looks like a bullet item — a code/number/letter
   // followed by ": " (e.g. " - 8518.30.10.00: Line telephone handsets"),
@@ -62,9 +72,17 @@ function renderBlock(block: string, bi: number, indent: boolean): ReactNode {
   return <p key={bi} className={indent ? "" : ""}>{renderInline(block, `${bi}`)}</p>;
 }
 
-export function RichText({ text, className = "" }: { text: string; className?: string }) {
+export function RichText({ text, className = "", inline = false }: { text: string; className?: string; inline?: boolean }) {
   if (!text) return null;
-  const blocks = normalise(text).split(/\n{2,}/);
+  const normalised = normalise(text);
+  // Inline mode: only used when the caller is rendering RichText next to a
+  // label/prefix on the same line and the text is a single short paragraph.
+  // Drops all block layout (no extra paragraphs/lists) and just strips
+  // markdown markup inline.
+  if (inline) {
+    return <span className={className}>{renderInline(normalised.replace(/\s+/g, " "), "inline")}</span>;
+  }
+  const blocks = normalised.split(/\n{2,}/);
 
   return (
     <div className={["space-y-2 leading-relaxed", className].join(" ")}>

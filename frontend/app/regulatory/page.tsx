@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney } from "@/lib/api";
+import { RichText } from "@/components/RichText";
 
 interface ImpactDoc {
   document_number: string;
@@ -177,7 +178,7 @@ function DocCard({ d }: { d: ImpactDoc }) {
       >
         {d.title}
       </a>
-      {i && <p className="mt-1.5 text-xs text-navy">{i.broker_summary}</p>}
+      {i && <RichText text={i.broker_summary} className="mt-1.5 text-xs text-navy" />}
       {!i && d.impact_error && (
         <p className="mt-1.5 text-[11px] italic text-warn">parse failed: {d.impact_error.slice(0, 160)}</p>
       )}

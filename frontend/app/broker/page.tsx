@@ -584,7 +584,7 @@ function CrossPanel({ cross }: { cross: null | "loading" | CrossResult }) {
           <span className="font-mono text-[10px] text-warn">→ {d.suggested_hts_code}</span>
         )}
       </div>
-      <p className="text-[11px] leading-snug text-navy">{d.reasoning}</p>
+      <RichText text={d.reasoning} className="text-[11px] text-navy" />
       {d.evidence.slice(0, 4).map((e, i) => (
         <div key={i} className="rounded border border-cardline bg-white px-2 py-1 text-[10px]">
           <span className="font-mono font-semibold text-accent-700">{e.ruling_number}</span>

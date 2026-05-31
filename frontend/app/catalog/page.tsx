@@ -297,9 +297,9 @@ function IntelView({ intel, product }: { intel: Intel; product: string }) {
                 ))}
               </div>
               <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px] text-muted">
-                <div className="col-span-2"><span className="text-navy">Labor:</span> {o.avg_labor_cost_note.replace(/\*+/g, "")}</div>
-                <div><span className="text-navy">Lead time:</span> {o.lead_time_note.replace(/\*+/g, "")}</div>
-                <div><span className="text-navy">MOQ:</span> {o.moq_note.replace(/\*+/g, "")}</div>
+                <div className="col-span-2"><span className="text-navy">Labor:</span> <RichText text={o.avg_labor_cost_note} inline /></div>
+                <div><span className="text-navy">Lead time:</span> <RichText text={o.lead_time_note} inline /></div>
+                <div><span className="text-navy">MOQ:</span> <RichText text={o.moq_note} inline /></div>
               </div>
               <a
                 href={`/factory-finder?product=${encodeURIComponent(product)}&country=${o.country_iso2}`}
@@ -341,7 +341,7 @@ function IntelView({ intel, product }: { intel: Intel; product: string }) {
             {intel.second_order_effects.map((e, i) => (
               <li key={i} className="rounded-md border border-cardline bg-white p-2.5">
                 <span className="font-semibold text-navy">{e.factor}: </span>
-                <span className="text-muted">{e.note.replace(/\*+/g, "")}</span>
+                <RichText text={e.note} className="text-muted" inline />
               </li>
             ))}
           </ul>

@@ -146,7 +146,7 @@ export default function FactoryFinderPage() {
         <div className="space-y-4">
           <div className="rounded-card border border-cardline bg-white p-5 shadow-card">
             <RichText text={data.search_summary} className="text-sm text-navy" />
-            <p className="mt-2 text-[11px] text-muted">{data.country_labor_note.replace(/\*+/g, "")}</p>
+            <RichText text={data.country_labor_note} className="mt-2 text-[11px] text-muted" />
             {(data.research.web_searches > 0 || data.research.world_bank_lookups > 0) && (
               <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-accent/30 bg-accent-50/30 px-2.5 py-1">
                 <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">Live research</span>
@@ -209,7 +209,7 @@ function FactoryCard({ f, product, country }: { f: Factory; product: string; cou
             {f.certifications.map((c, i) => <span key={i} className="rounded border border-accent/30 bg-accent-50/40 px-1.5 py-0.5 text-[10px] font-medium text-accent-700">{c}</span>)}
           </div>
         )}
-        <p className="mt-1.5 text-[11px] text-muted">{f.scale_note.replace(/\*+/g, "")}</p>
+        <RichText text={f.scale_note} className="mt-1.5 text-[11px] text-muted" />
       </div>
 
       {/* Openings */}
@@ -230,7 +230,7 @@ function FactoryCard({ f, product, country }: { f: Factory; product: string; cou
           <FitMeter label="Tactical bridge" fit={f.tactical_bridge_fit} />
           <FitMeter label="Long-term partner" fit={f.strategic_partner_fit} />
         </div>
-        <p className="mt-1.5 text-[11px] text-muted">{f.horizon_rationale.replace(/\*+/g, "")}</p>
+        <RichText text={f.horizon_rationale} className="mt-1.5 text-[11px] text-muted" />
       </div>
 
       {/* Customers + risk */}
@@ -238,7 +238,7 @@ function FactoryCard({ f, product, country }: { f: Factory; product: string; cou
         {f.key_customers.length > 0 && (
           <div><span className="text-muted">Known customers:</span> <span className="text-navy">{f.key_customers.join(", ")}</span></div>
         )}
-        <div><span className="font-semibold text-warn">Risk:</span> <span className="text-muted">{f.risk_note.replace(/\*+/g, "")}</span></div>
+        <div><span className="font-semibold text-warn">Risk:</span> <RichText text={f.risk_note} className="text-muted" inline /></div>
         {f.website && (
           <a href={f.website.startsWith("http") ? f.website : `https://${f.website}`} target="_blank" rel="noopener noreferrer"
             className="inline-block text-[11px] font-semibold text-accent-700 hover:underline">{f.website.replace(/^https?:\/\//, "")} →</a>
@@ -326,7 +326,7 @@ function DeepDive({ factory, product, country }: { factory: Factory; product: st
           )}
           {p && (
             <div className="space-y-3 text-[11px]">
-              <p className="text-navy">{p.overview.replace(/\*+/g, "")}</p>
+              <RichText text={p.overview} className="text-navy" />
 
               <div className="grid grid-cols-2 gap-1.5 rounded-md bg-navy-50/40 p-2.5">
                 <KVm k="Founded" v={p.founded ?? "—"} />
@@ -340,7 +340,7 @@ function DeepDive({ factory, product, country }: { factory: Factory; product: st
                   <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">Recent developments</div>
                   <ul className="mt-1 space-y-1">
                     {p.recent_developments.map((d, i) => (
-                      <li key={i}><span className="font-medium text-navy">{d.period}:</span> <span className="text-muted">{d.note}</span></li>
+                      <li key={i}><span className="font-medium text-navy">{d.period}:</span> <RichText text={d.note} className="text-muted" inline /></li>
                     ))}
                   </ul>
                 </div>
@@ -352,7 +352,7 @@ function DeepDive({ factory, product, country }: { factory: Factory; product: st
                   {p.diligence_flags.map((d, i) => (
                     <li key={i} className="flex items-start gap-1.5">
                       <span className={classNames("mt-1 h-1.5 w-1.5 shrink-0 rounded-full", d.kind === "risk" ? "bg-warn" : d.kind === "watch" ? "bg-amber-500" : "bg-accent")} />
-                      <span className="text-muted"><span className="font-medium capitalize text-navy">{d.kind}:</span> {d.note}</span>
+                      <span className="text-muted"><span className="font-medium capitalize text-navy">{d.kind}:</span> <RichText text={d.note} className="text-muted" inline /></span>
                     </li>
                   ))}
                 </ul>
@@ -360,7 +360,7 @@ function DeepDive({ factory, product, country }: { factory: Factory; product: st
 
               <div className="rounded-md bg-navy-50/40 p-2.5">
                 <span className="font-semibold text-navy">How to engage: </span>
-                <span className="text-muted">{p.engagement_fit.replace(/\*+/g, "")}</span>
+                <RichText text={p.engagement_fit} className="text-muted" inline />
               </div>
 
               {/* Draft outreach email */}
@@ -375,7 +375,7 @@ function DeepDive({ factory, product, country }: { factory: Factory; product: st
                 <pre className="mt-1 whitespace-pre-wrap font-sans text-[11px] leading-snug text-muted">{p.draft_outreach.body}</pre>
               </div>
 
-              <p className="text-[10px] italic text-muted">{p.confidence_note.replace(/\*+/g, "")}</p>
+              <RichText text={p.confidence_note} className="text-[10px] italic text-muted" />
 
               {res && res.sources.length > 0 && (
                 <div className="flex flex-wrap gap-1">
@@ -395,7 +395,7 @@ function DeepDive({ factory, product, country }: { factory: Factory; product: st
 }
 
 function KVm({ k, v }: { k: string; v: string }) {
-  return <div><span className="text-muted">{k}:</span> <span className="text-navy">{v.replace(/\*+/g, "")}</span></div>;
+  return <div><span className="text-muted">{k}:</span> <RichText text={v} className="text-navy" inline /></div>;
 }
 
 function Signal({ label, value }: { label: string; value: string }) {
