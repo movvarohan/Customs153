@@ -2,8 +2,27 @@ import { Fragment, type ReactNode } from "react";
 
 // Lightweight, dependency-free renderer for the short markdown-ish prose the
 // LLM agents produce. Handles **bold**, `code`, bullet lists (- / • / *),
-// numbered lists, and paragraph breaks — and strips stray asterisks so text
-// never shows raw markdown. Not a full markdown engine on purpose.
+// numbered lists, paragraph breaks, and the two LLM artifacts that show up in
+// classifier reasoning:
+//   • run-on "Step N: ..." sequences with no paragraph breaks
+//   • inline " - <item> - <item>" bullets at GRI-6 descent
+// Strips stray asterisks so text never shows raw markdown. Not a full
+// markdown engine on purpose.
+
+// Pre-normalise: insert blank-line breaks before each "Step N <sep>" so the
+// paragraph splitter below promotes them to their own block, and lift inline
+// hyphen-bullet runs (" - X - Y") to real newline-prefixed bullets.
+function normalise(text: string): string {
+  let t = text.trim();
+  // "Step N: ", "Step N — ", "Step N. ", "Step N - " (with hyphen + space)
+  t = t.replace(/(?<=\S)\s+(?=Step\s+\d+\s*(?::|—|\.\s+|-\s))/g, "\n\n");
+  // Inline " - <text>" bullets. Only treat as a bullet when the item starts
+  // with something that looks like a bullet item — a code/number/letter
+  // followed by ": " (e.g. " - 8518.30.10.00: Line telephone handsets"),
+  // not a sentence dash.
+  t = t.replace(/\s+-\s+(?=[\w.()/-]+:\s)/g, "\n- ");
+  return t;
+}
 
 function renderInline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -22,9 +41,30 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
   return out;
 }
 
+// Renders "Step N <sep> <title>. <body>" as a small navy-caps header and
+// indented body. Falls through to a normal paragraph if no Step marker.
+function renderBlock(block: string, bi: number, indent: boolean): ReactNode {
+  const head = block.match(/^(Step\s+\d+)\s*(?::|—|\.|-)\s*([^.\n]*\.)\s*([\s\S]*)$/);
+  const label = head?.[1];
+  const title = head?.[2]?.trim().replace(/\.$/, "");
+  const body = (head?.[3] ?? block).trim();
+  if (label) {
+    return (
+      <div key={bi}>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-navy">
+          {label}
+          {title && <span className="ml-1.5 normal-case text-muted">— {title}</span>}
+        </div>
+        {body && <p className="mt-1">{renderInline(body, `${bi}-body`)}</p>}
+      </div>
+    );
+  }
+  return <p key={bi} className={indent ? "" : ""}>{renderInline(block, `${bi}`)}</p>;
+}
+
 export function RichText({ text, className = "" }: { text: string; className?: string }) {
   if (!text) return null;
-  const blocks = text.trim().split(/\n{2,}/);
+  const blocks = normalise(text).split(/\n{2,}/);
 
   return (
     <div className={["space-y-2 leading-relaxed", className].join(" ")}>
@@ -51,8 +91,7 @@ export function RichText({ text, className = "" }: { text: string; className?: s
             </ol>
           );
         }
-        // Plain paragraph (join wrapped lines with spaces).
-        return <p key={bi}>{renderInline(lines.join(" "), `${bi}`)}</p>;
+        return renderBlock(lines.join(" "), bi, false);
       })}
     </div>
   );

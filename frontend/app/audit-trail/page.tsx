@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, classNames } from "@/lib/api";
+import { RichText } from "@/components/RichText";
 
 interface Record_ {
   id: string;
@@ -237,9 +238,9 @@ export default function AuditTrailPage() {
                       <div className="md:col-span-2">
                         <FieldLabel>Reasoning (GRI {r.gri_rule_applied ?? "—"})</FieldLabel>
                         <div className="mt-1 max-h-72 overflow-y-auto rounded-md border border-cardline bg-white p-3">
-                          <p className="whitespace-pre-line text-[11px] leading-relaxed text-navy">
-                            {r.reasoning ?? "—"}
-                          </p>
+                          {r.reasoning
+                            ? <RichText text={r.reasoning} className="text-[11px] text-navy" />
+                            : <p className="text-[11px] text-muted">—</p>}
                         </div>
                       </div>
                       <div>

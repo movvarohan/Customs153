@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney } from "@/lib/api";
+import { RichText } from "@/components/RichText";
 
 interface DutyComponent { kind: string; rate: number | null; amount_usd_cents: number; source_citation: string }
 interface Quote {
@@ -212,7 +213,7 @@ function QuoteView({ q }: { q: Quote }) {
       {/* Classification detail */}
       <div className="rounded-card border border-cardline bg-white p-5 shadow-card">
         <h2 className="mb-2 text-sm font-semibold text-navy">Why this classification</h2>
-        <p className="text-sm leading-relaxed text-muted">{q.classification.reasoning}</p>
+        <RichText text={q.classification.reasoning} className="text-sm text-muted" />
         <div className="mt-3 grid gap-4 md:grid-cols-2">
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-widest text-muted">Cited authority</div>

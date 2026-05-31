@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+import { RichText } from "@/components/RichText";
 import { SavingsReport } from "@/components/SavingsReport";
 
 interface PSCFindings {
@@ -592,7 +593,7 @@ export default function FindRefundsPage() {
 
                     <div className="mt-4">
                       <div className="text-sm font-semibold text-navy">Why we believe this is misclassified</div>
-                      <Reasoning text={opp.reasoning_full ?? opp.reasoning_summary} />
+                      <RichText text={opp.reasoning_full ?? opp.reasoning_summary} className="mt-2 text-sm text-muted" />
                     </div>
 
                     <div className="mt-4 border-t border-cardline pt-3 text-[11px] italic text-muted">
@@ -646,89 +647,6 @@ export default function FindRefundsPage() {
       )}
 
       {showReport && findings && <SavingsReport findings={findings} onClose={() => setShowReport(false)} />}
-    </div>
-  );
-}
-
-// Renders the classifier's reasoning as structured prose.
-//
-// The model emits a single run-on string like:
-//   "Step 1: Identify candidate headings. The article is... Step 2: Apply
-//   chapter and section notes. Section XVI... Step 4: Descend via GRI 6.
-//   At the 8-digit level: - 8518.30.10.00: Line telephone handsets -
-//   8518.30.20.00: Other Wireless..."
-// rendering as one wall of text. We split it into:
-//   (a) "Step N" sections (matching colon, dash, em-dash, or period as the
-//       separator after the step number)
-//   (b) inline " - <code>: <text>" bullets lifted to their own list rows
-function Reasoning({ text }: { text: string }) {
-  if (!text) return <p className="mt-2 text-sm text-muted">—</p>;
-
-  // Split on "Step N <sep>" while keeping the heading attached to its body.
-  // Sep matches `:`, `—`, ` - ` (hyphen with surrounding spaces), or `.`.
-  const stepRe = /(?=Step\s+\d+\s*(?::|—|\.\s+|-\s))/g;
-  const blocks = text
-    .split(stepRe)
-    .map((b) => b.trim())
-    .filter(Boolean);
-
-  // If we never matched a Step boundary, fall back to plain paragraph split.
-  if (blocks.length <= 1) {
-    return (
-      <div className="mt-2 space-y-2.5">
-        {text.split(/\n{2,}/).map((p, i) => (
-          <p key={i} className="whitespace-pre-line text-sm leading-relaxed text-muted">{p.trim()}</p>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-2 space-y-3">
-      {blocks.map((block, i) => {
-        const headMatch = block.match(/^(Step\s+\d+)\s*(?::|—|\.|-)\s*([^.]*\.)\s*([\s\S]*)$/);
-        const stepLabel = headMatch?.[1];
-        const stepTitle = headMatch?.[2]?.trim();
-        const body = (headMatch?.[3] ?? block).trim();
-        return (
-          <div key={i}>
-            {stepLabel && (
-              <div className="text-[12px] font-semibold uppercase tracking-wide text-navy">
-                {stepLabel}
-                {stepTitle && <span className="ml-1.5 normal-case text-muted">— {stepTitle.replace(/\.$/, "")}</span>}
-              </div>
-            )}
-            <ReasoningBody text={body} className={stepLabel ? "mt-1" : ""} />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Renders a body string: lifts inline " - <stuff>" bullets to a real list,
-// keeps the rest as a paragraph. Common LLM artifact: "At the 8-digit level:
-// - 8518.30.10.00: handsets - 8518.30.20.00: Other".
-function ReasoningBody({ text, className }: { text: string; className?: string }) {
-  // Pull bullets out — anywhere we see " - X" or " – X" (with surrounding spaces).
-  const parts = text.split(/\s+(?:-|–)\s+(?=\S)/);
-  if (parts.length <= 1) {
-    return <p className={`whitespace-pre-line text-sm leading-relaxed text-muted ${className ?? ""}`}>{text}</p>;
-  }
-  const [lead, ...bullets] = parts;
-  return (
-    <div className={className}>
-      {lead && lead.trim() && (
-        <p className="whitespace-pre-line text-sm leading-relaxed text-muted">{lead.trim()}</p>
-      )}
-      <ul className="mt-1.5 space-y-0.5 text-sm leading-relaxed text-muted">
-        {bullets.map((b, i) => (
-          <li key={i} className="flex gap-2">
-            <span className="select-none text-accent">•</span>
-            <span>{b.trim()}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney } from "@/lib/api";
+import { RichText } from "@/components/RichText";
 
 type FlagKind = "info" | "warn" | "risk";
 interface Flag { kind: FlagKind; label: string }
@@ -526,7 +527,9 @@ function Drawer({ l, edit, dirty, setEdits }: { l: Line; edit: string; dirty: bo
             <div className="md:col-span-2">
               <PillarLabel n={null}>Reasoning trace</PillarLabel>
               <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-cardline bg-navy-50/40 p-2">
-                <p className="whitespace-pre-line text-[11px] leading-relaxed text-navy">{record.reasoning ?? "—"}</p>
+                {record.reasoning
+                  ? <RichText text={record.reasoning} className="text-[11px] text-navy" />
+                  : <p className="text-[11px] text-muted">—</p>}
               </div>
               <p className="mt-1 text-[10px] text-muted">
                 Audit ID <span className="font-mono">{record.id.slice(0, 8)}</span> · {record.model ?? "—"} · prompt {record.prompt_version ?? "—"}
