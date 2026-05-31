@@ -29,6 +29,7 @@ interface PSCFindings {
     recoverable_amount_usd_cents: number;
     our_confidence: "low" | "medium" | "high";
     reasoning_summary: string;
+    reasoning_full?: string;
     psc_eligible: boolean;
   }>;
   uncertain_cases: Array<{
@@ -591,9 +592,7 @@ export default function FindRefundsPage() {
 
                     <div className="mt-4">
                       <div className="text-sm font-semibold text-navy">Why we believe this is misclassified</div>
-                      <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-muted">
-                        {opp.reasoning_summary}
-                      </p>
+                      <Reasoning text={opp.reasoning_full ?? opp.reasoning_summary} />
                     </div>
 
                     <div className="mt-4 border-t border-cardline pt-3 text-[11px] italic text-muted">
@@ -647,6 +646,46 @@ export default function FindRefundsPage() {
       )}
 
       {showReport && findings && <SavingsReport findings={findings} onClose={() => setShowReport(false)} />}
+    </div>
+  );
+}
+
+// Renders the classifier's reasoning as structured prose. The text comes in
+// cleaned (markdown stripped) but still carries the model's natural structure
+// — "Step 1 — Identify candidate headings", "Step 4 — Descend to 6, 8, 10
+// digits", paragraph breaks. We split on blank lines and on the "Step N —"
+// pattern so each beat reads as its own paragraph instead of a single wall
+// of text.
+function Reasoning({ text }: { text: string }) {
+  if (!text) return <p className="mt-2 text-sm text-muted">—</p>;
+  // First, split on blank lines (paragraph breaks). Within each paragraph,
+  // promote "Step N — heading" to its own line so it reads as a sub-header.
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .flatMap((p) => p.split(/(?=Step\s+\d+\s+[—-])/g))
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  return (
+    <div className="mt-2 space-y-2.5">
+      {paragraphs.map((p, i) => {
+        const stepMatch = p.match(/^(Step\s+\d+\s+[—-][^.]+\.)([\s\S]*)$/);
+        const heading = stepMatch?.[1]?.trim();
+        const body = stepMatch?.[2]?.trim();
+        if (heading) {
+          return (
+            <div key={i}>
+              <div className="text-[12px] font-semibold uppercase tracking-wide text-navy">{heading}</div>
+              {body && (
+                <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-muted">{body}</p>
+              )}
+            </div>
+          );
+        }
+        return (
+          <p key={i} className="whitespace-pre-line text-sm leading-relaxed text-muted">{p}</p>
+        );
+      })}
     </div>
   );
 }

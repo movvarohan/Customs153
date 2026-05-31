@@ -67,6 +67,9 @@ export const RefundOpportunity = z.object({
   recoverable_amount_usd_cents: z.number().int(),
   our_confidence: z.enum(["low", "medium", "high"]),
   reasoning_summary: z.string(),
+  /** Full GRI reasoning the classifier emitted for the predicted code,
+   *  cleaned of markdown markup so it renders as plain prose. */
+  reasoning_full: z.string().optional(),
   psc_eligible: z.boolean(),
 });
 export type RefundOpportunityT = z.infer<typeof RefundOpportunity>;

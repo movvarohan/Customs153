@@ -238,6 +238,7 @@ export async function findRefundOpportunities(
         };
       } else {
         const reasoningSummary = summarize(predicted.reasoning);
+        const reasoningFull = cleanReasoning(predicted.reasoning);
         outcome = {
           kind: "opportunity",
           trace,
@@ -255,6 +256,7 @@ export async function findRefundOpportunities(
             recoverable_amount_usd_cents: recoverable,
             our_confidence: predicted.confidence,
             reasoning_summary: reasoningSummary,
+            reasoning_full: reasoningFull,
             psc_eligible: t.psc_eligible,
           },
         };
@@ -423,8 +425,25 @@ export async function findRefundOpportunities(
 }
 
 function summarize(reasoning: string): string {
-  const sents = reasoning.split(/(?<=[.!?])\s+/);
+  const sents = cleanReasoning(reasoning).split(/(?<=[.!?])\s+/);
   return sents.slice(0, 2).join(" ").slice(0, 280);
+}
+
+// Strip markdown markup (bold, headers, list markers, asterisk emphasis) and
+// normalise whitespace so the classifier's reasoning renders as plain prose.
+// We keep paragraph breaks intact so the frontend can split on blank lines.
+function cleanReasoning(reasoning: string): string {
+  return reasoning
+    // ` ** Step 1 — Foo.** ` → ` Step 1 — Foo. `
+    .replace(/\*\*([^*]+?)\*\*/g, "$1")
+    // Standalone single-asterisk emphasis: *foo* → foo
+    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, "$1")
+    // Leading markdown headers (## ...) and list bullets (- / * at start of line)
+    .replace(/^[ \t]*#{1,6}\s+/gm, "")
+    .replace(/^[ \t]*[-*]\s+/gm, "")
+    // Collapse 3+ blank lines into a single paragraph break.
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function persistAuditLog(
