@@ -650,42 +650,85 @@ export default function FindRefundsPage() {
   );
 }
 
-// Renders the classifier's reasoning as structured prose. The text comes in
-// cleaned (markdown stripped) but still carries the model's natural structure
-// — "Step 1 — Identify candidate headings", "Step 4 — Descend to 6, 8, 10
-// digits", paragraph breaks. We split on blank lines and on the "Step N —"
-// pattern so each beat reads as its own paragraph instead of a single wall
-// of text.
+// Renders the classifier's reasoning as structured prose.
+//
+// The model emits a single run-on string like:
+//   "Step 1: Identify candidate headings. The article is... Step 2: Apply
+//   chapter and section notes. Section XVI... Step 4: Descend via GRI 6.
+//   At the 8-digit level: - 8518.30.10.00: Line telephone handsets -
+//   8518.30.20.00: Other Wireless..."
+// rendering as one wall of text. We split it into:
+//   (a) "Step N" sections (matching colon, dash, em-dash, or period as the
+//       separator after the step number)
+//   (b) inline " - <code>: <text>" bullets lifted to their own list rows
 function Reasoning({ text }: { text: string }) {
   if (!text) return <p className="mt-2 text-sm text-muted">—</p>;
-  // First, split on blank lines (paragraph breaks). Within each paragraph,
-  // promote "Step N — heading" to its own line so it reads as a sub-header.
-  const paragraphs = text
-    .split(/\n{2,}/)
-    .flatMap((p) => p.split(/(?=Step\s+\d+\s+[—-])/g))
-    .map((p) => p.trim())
+
+  // Split on "Step N <sep>" while keeping the heading attached to its body.
+  // Sep matches `:`, `—`, ` - ` (hyphen with surrounding spaces), or `.`.
+  const stepRe = /(?=Step\s+\d+\s*(?::|—|\.\s+|-\s))/g;
+  const blocks = text
+    .split(stepRe)
+    .map((b) => b.trim())
     .filter(Boolean);
 
+  // If we never matched a Step boundary, fall back to plain paragraph split.
+  if (blocks.length <= 1) {
+    return (
+      <div className="mt-2 space-y-2.5">
+        {text.split(/\n{2,}/).map((p, i) => (
+          <p key={i} className="whitespace-pre-line text-sm leading-relaxed text-muted">{p.trim()}</p>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="mt-2 space-y-2.5">
-      {paragraphs.map((p, i) => {
-        const stepMatch = p.match(/^(Step\s+\d+\s+[—-][^.]+\.)([\s\S]*)$/);
-        const heading = stepMatch?.[1]?.trim();
-        const body = stepMatch?.[2]?.trim();
-        if (heading) {
-          return (
-            <div key={i}>
-              <div className="text-[12px] font-semibold uppercase tracking-wide text-navy">{heading}</div>
-              {body && (
-                <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-muted">{body}</p>
-              )}
-            </div>
-          );
-        }
+    <div className="mt-2 space-y-3">
+      {blocks.map((block, i) => {
+        const headMatch = block.match(/^(Step\s+\d+)\s*(?::|—|\.|-)\s*([^.]*\.)\s*([\s\S]*)$/);
+        const stepLabel = headMatch?.[1];
+        const stepTitle = headMatch?.[2]?.trim();
+        const body = (headMatch?.[3] ?? block).trim();
         return (
-          <p key={i} className="whitespace-pre-line text-sm leading-relaxed text-muted">{p}</p>
+          <div key={i}>
+            {stepLabel && (
+              <div className="text-[12px] font-semibold uppercase tracking-wide text-navy">
+                {stepLabel}
+                {stepTitle && <span className="ml-1.5 normal-case text-muted">— {stepTitle.replace(/\.$/, "")}</span>}
+              </div>
+            )}
+            <ReasoningBody text={body} className={stepLabel ? "mt-1" : ""} />
+          </div>
         );
       })}
+    </div>
+  );
+}
+
+// Renders a body string: lifts inline " - <stuff>" bullets to a real list,
+// keeps the rest as a paragraph. Common LLM artifact: "At the 8-digit level:
+// - 8518.30.10.00: handsets - 8518.30.20.00: Other".
+function ReasoningBody({ text, className }: { text: string; className?: string }) {
+  // Pull bullets out — anywhere we see " - X" or " – X" (with surrounding spaces).
+  const parts = text.split(/\s+(?:-|–)\s+(?=\S)/);
+  if (parts.length <= 1) {
+    return <p className={`whitespace-pre-line text-sm leading-relaxed text-muted ${className ?? ""}`}>{text}</p>;
+  }
+  const [lead, ...bullets] = parts;
+  return (
+    <div className={className}>
+      {lead && lead.trim() && (
+        <p className="whitespace-pre-line text-sm leading-relaxed text-muted">{lead.trim()}</p>
+      )}
+      <ul className="mt-1.5 space-y-0.5 text-sm leading-relaxed text-muted">
+        {bullets.map((b, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="select-none text-accent">•</span>
+            <span>{b.trim()}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
