@@ -18,6 +18,7 @@ const GROUPS: Group[] = [
       { href: "/quote", label: "Instant quote", desc: "Landed cost for one product in seconds" },
       { href: "/process-invoice", label: "Process invoice", desc: "Extract → classify → price a live entry" },
       { href: "/find-refunds", label: "Find refunds", desc: "Scan past entries for recoverable duty" },
+      { href: "/risk", label: "Risk screen", desc: "Sanctions · UFLPA · AD/CVD · entity graph" },
     ],
   },
   {

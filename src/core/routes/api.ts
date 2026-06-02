@@ -23,6 +23,7 @@ import { calculateDuty, calculateEntryFees } from "@/core/agents/duty-calculator
 import { loadTariffRates } from "@/core/lib/tariff-rates";
 import { parseEntrySummary } from "@/core/agents/entry-summary-parser";
 import { findRefundOpportunities } from "@/core/agents/psc-finder";
+import { runRiskScreen } from "@/core/agents/risk-screener";
 import { renderRefundReportToBuffer } from "@/core/lib/render-refund-pdf";
 import { ensureDemoCustomer, listSkuMemory, upsertSkuMemory, seedSkuMemoryIfEmpty } from "@/core/lib/sku-memory";
 import { generateCounterfactuals } from "@/core/agents/counterfactual";
@@ -859,6 +860,71 @@ apiRoute.post("/render-refund-pdf", async (c) => {
   );
   // Hono accepts ArrayBuffer / Uint8Array bodies; cast Buffer view explicitly.
   return c.body(pdf as unknown as ArrayBuffer);
+});
+
+// ── POST /api/risk/screen ────────────────────────────────────────────────
+// Standalone risk screen. Accepts EITHER a full HistoricalEntries body (the
+// shape Find Refunds uses) OR a lightweight { importer, importer_ein,
+// suppliers, country_of_origin? } body for ad-hoc lookups from the /risk
+// tab. Returns a RiskProfile.
+const RiskScreenLite = z.object({
+  importer: z.string().min(1),
+  importer_ein: z.string().nullable().optional(),
+  suppliers: z.array(z.object({
+    name: z.string().min(1),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    province: z.string().optional(),
+    country: z.string().optional(),
+  })).default([]),
+  country_of_origin: z.string().optional(),
+  hts_codes: z.array(z.string()).optional(),
+});
+
+apiRoute.post("/risk/screen", async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON body" }, 400); }
+  // Try the full HistoricalEntries shape first; fall back to lite.
+  const full = FindRefundsJsonBody.safeParse(body);
+  let input: import("@/core/schemas/refund").HistoricalEntriesT;
+  if (full.success) {
+    input = full.data;
+  } else {
+    const lite = RiskScreenLite.safeParse(body);
+    if (!lite.success) return c.json({ error: `invalid risk screen body: ${lite.error.message}` }, 400);
+    // Synthesize a minimal HistoricalEntries so the screener can run. The
+    // entry-level fields are placeholders — the screener only reads importer
+    // + suppliers and (for AD/CVD) line-level HTS+country pairs.
+    input = {
+      importer: lite.data.importer,
+      importer_ein: lite.data.importer_ein ?? undefined,
+      generated_at: new Date().toISOString(),
+      entries: [{
+        entry_number: "AD-HOC",
+        entry_date: new Date().toISOString().slice(0, 10),
+        port_of_entry: "—",
+        country_of_origin: (lite.data.country_of_origin ?? "CN").toUpperCase().slice(0, 2),
+        mode_of_transport: "ocean",
+        suppliers: lite.data.suppliers,
+        line_items: (lite.data.hts_codes ?? []).map((hts) => ({
+          description: "ad-hoc screen",
+          quantity: 1,
+          unit_value_usd_cents: 100,
+          total_value_usd_cents: 100,
+          hts_code_as_filed: hts,
+          duty_paid_usd_cents: 0,
+        })),
+      }],
+    };
+    // If no hts_codes given, drop the synthetic entry to skip AD/CVD scan.
+    if ((lite.data.hts_codes ?? []).length === 0) input.entries = [];
+  }
+  try {
+    const profile = await runRiskScreen(input);
+    return c.json(profile);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
 });
 
 // ── Broker copilot: queue + per-customer SKU memory + correction ─────────

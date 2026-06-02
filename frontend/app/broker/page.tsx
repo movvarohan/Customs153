@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney } from "@/lib/api";
 import { RichText } from "@/components/RichText";
+import { RiskBadge, type RiskProfile } from "@/components/RiskPanel";
 
 type FlagKind = "info" | "warn" | "risk";
 interface Flag { kind: FlagKind; label: string }
@@ -74,6 +75,35 @@ export default function BrokerQueuePage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [filings, setFilings] = useState<Filing[]>([]);
+  const [risk, setRisk] = useState<RiskProfile | null>(null);
+
+  // Risk screen for the current importer. We screen the importer name + the
+  // unique suppliers attached to the seeded broker queue (currently none in
+  // the broker queue payload itself, so this is importer-only — the supplier
+  // graph is enriched via the find-refunds flow).
+  useEffect(() => {
+    if (!queue) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const importerName = queue.lines[0]?.description ? "Atlas Retail Holdings LLC" : "Atlas Retail Holdings LLC";
+        const r = await fetch(`${API_BASE_URL}/api/risk/screen`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            importer: importerName,
+            country_of_origin: "CN",
+            hts_codes: Array.from(new Set(queue.lines.map((l) => l.hts_code).filter(Boolean))).slice(0, 20),
+            suppliers: [],
+          }),
+        });
+        if (!r.ok) return;
+        const j = (await r.json()) as RiskProfile;
+        if (!cancelled) setRisk(j);
+      } catch { /* non-fatal */ }
+    })();
+    return () => { cancelled = true; };
+  }, [queue]);
 
   const refreshFilings = useCallback(async () => {
     try {
@@ -194,6 +224,8 @@ export default function BrokerQueuePage() {
         </button>
         <span className="text-[11px] text-muted">Bulk-sign the high-confidence lines, then review the flagged ones by hand.</span>
       </div>
+
+      {risk && <RiskBadge risk={risk} href="/risk" />}
 
       {filings.length > 0 && (
         <Section title="Filings — pending broker review" count={filings.filter((f) => f.status === "pending_review").length} hint="ISF & entry (7501) drafts routed from shipment coordination">

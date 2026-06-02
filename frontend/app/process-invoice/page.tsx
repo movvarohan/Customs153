@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL, classNames, fmtMoney, readNDJSON } from "@/lib/api";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { RichText } from "@/components/RichText";
+import { RiskBadge, type RiskProfile } from "@/components/RiskPanel";
 
 interface LineClassification {
   hts_code: string;
@@ -87,6 +88,45 @@ export default function ProcessInvoicePage() {
   const [extraction, setExtraction] = useState<ExtractedShipment | null>(null);
   const [sourceFilenames, setSourceFilenames] = useState<string[]>([]);
   const [lineStates, setLineStates] = useState<LineState[]>([]);
+  const [risk, setRisk] = useState<RiskProfile | null>(null);
+
+  // Run the risk screen the moment we have an extraction. Importer = consignee
+  // (with a fallback for samples missing the field); supplier = vendor named
+  // on the invoice; country = country-of-origin field; HTS codes are filled
+  // in once classifications come back (we re-run when more codes arrive).
+  useEffect(() => {
+    if (!extraction) { setRisk(null); return; }
+    const importerName = extraction.consignee?.trim() || "Importer of record";
+    const classifiedCodes = Array.from(new Set(
+      lineStates
+        .map((s) => (s.status === "classified" ? s.classification.hts_code : null))
+        .filter((c): c is string => Boolean(c)),
+    ));
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE_URL}/api/risk/screen`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            importer: importerName,
+            country_of_origin: extraction.country_of_origin ?? "CN",
+            hts_codes: classifiedCodes,
+            suppliers: [{
+              name: extraction.vendor,
+              country: extraction.country_of_origin ?? undefined,
+            }],
+          }),
+        });
+        if (!r.ok) return;
+        const j = (await r.json()) as RiskProfile;
+        if (!cancelled) setRisk(j);
+      } catch { /* non-fatal */ }
+    })();
+    return () => { cancelled = true; };
+    // Re-run when extraction changes OR when the set of classified HTS codes
+    // changes (so the AD/CVD scope check picks up new lines as they land).
+  }, [extraction, lineStates]);
   const [summary, setSummary] = useState<{
     total_documents: number;
     total_lines: number;
@@ -401,6 +441,9 @@ export default function ProcessInvoicePage() {
 
           {extraction && (
             <>
+              {/* Risk & compliance badge — runs once we have an extraction */}
+              {risk && <div className="mb-4"><RiskBadge risk={risk} href="/risk" /></div>}
+
               {/* Total duty headline */}
               {summary && summary.total_duty_usd_cents > 0 && (
                 <div className="mb-6 rounded-md bg-navy-50 p-5 ring-1 ring-cardline">
