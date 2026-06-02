@@ -398,6 +398,7 @@ async function main(): Promise<void> {
         country_of_origin: profile.country,
         mode_of_transport: "ocean",
         line_items: lines,
+        suppliers: [],
       });
     }
 

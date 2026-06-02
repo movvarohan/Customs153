@@ -1,0 +1,81 @@
+entity_number,name,alt_names,addresses,country,federal_register_notice,license_requirement,license_policy
+BIS-001,Huawei Technologies Co. Ltd.,Huawei;Huawei Technologies,"Bantian, Longgang District, Shenzhen",CN,84 FR 22961,All items subject to EAR,Presumption of denial
+BIS-002,HiSilicon Technologies Co. Ltd.,HiSilicon,"Shenzhen High-Tech Industrial Park",CN,84 FR 22961,All items subject to EAR,Presumption of denial
+BIS-003,SMIC International (Shanghai) Co. Ltd.,SMIC;Semiconductor Manufacturing Intl,"Zhangjiang High-Tech Park, Shanghai",CN,85 FR 83416,All items subject to EAR,Presumption of denial
+BIS-004,Yangtze Memory Technologies Co. Ltd.,YMTC,"Wuhan East Lake High-Tech Development Zone",CN,87 FR 80130,All items subject to EAR,Presumption of denial
+BIS-005,Changxin Memory Technologies Inc.,CXMT,"Hefei Economic and Technological Development Zone",CN,87 FR 80130,Advanced node items,Presumption of denial
+BIS-006,Inspur Group Co. Ltd.,Inspur,"Jinan High-Tech Industrial Development Zone",CN,88 FR 16641,Items subject to EAR,Presumption of denial
+BIS-007,Sugon Information Industry Co. Ltd.,Sugon;Dawning,"Beijing Zhongguancun",CN,84 FR 32263,All items subject to EAR,Presumption of denial
+BIS-008,Higon Information Technology,Higon,"Tianjin Binhai New Area",CN,84 FR 32263,All items subject to EAR,Presumption of denial
+BIS-009,Hangzhou Hikvision Digital Technology Co. Ltd.,Hikvision,"Hangzhou Binjiang District",CN,84 FR 54002,Items subject to EAR,Presumption of denial
+BIS-010,Zhejiang Dahua Technology Co. Ltd.,Dahua,"Hangzhou Binjiang District",CN,84 FR 54002,Items subject to EAR,Presumption of denial
+BIS-011,iFlytek Co. Ltd.,iFlytek,"Hefei Hightech Development Zone",CN,84 FR 54002,Items subject to EAR,Presumption of denial
+BIS-012,SenseTime Group Inc.,SenseTime,"Hong Kong;Beijing",CN,84 FR 54002,Items subject to EAR,Presumption of denial
+BIS-013,Megvii Technology Ltd.,Megvii,"Beijing Haidian District",CN,84 FR 54002,Items subject to EAR,Presumption of denial
+BIS-014,Yitu Technology Co. Ltd.,Yitu,"Shanghai Yangpu District",CN,84 FR 54002,Items subject to EAR,Presumption of denial
+BIS-015,Beijing Academy of Quantum Information Sciences,BAQIS,"Beijing Haidian District",CN,87 FR 73719,Items subject to EAR,Presumption of denial
+BIS-016,Cambricon Technologies Corporation Limited,Cambricon,"Beijing Haidian District",CN,87 FR 73719,Items subject to EAR,Presumption of denial
+BIS-017,Loongson Technology Corporation Limited,Loongson,"Beijing Zhongguancun",CN,88 FR 18988,Items subject to EAR,Presumption of denial
+BIS-018,Tianjin Phytium Information Technology Co. Ltd.,Phytium,"Tianjin Binhai New Area",CN,86 FR 18432,Items subject to EAR,Presumption of denial
+BIS-019,National Supercomputing Center Wuxi,Wuxi NSCC,"Wuxi New District",CN,86 FR 18432,Items subject to EAR,Presumption of denial
+BIS-020,National University of Defense Technology,NUDT,"Changsha Hunan",CN,80 FR 8520,Items subject to EAR,Presumption of denial
+BIS-021,Beijing Institute of Technology,BIT,"Beijing Haidian District",CN,86 FR 18432,Items subject to EAR,Presumption of denial
+BIS-022,Northwestern Polytechnical University,NPU,"Xi'an Shaanxi",CN,86 FR 18432,Items subject to EAR,Presumption of denial
+BIS-023,Harbin Institute of Technology,HIT,"Harbin Heilongjiang",CN,86 FR 18432,Items subject to EAR,Presumption of denial
+BIS-024,Harbin Engineering University,HEU,"Harbin Heilongjiang",CN,86 FR 18432,Items subject to EAR,Presumption of denial
+BIS-025,Beihang University,BUAA,"Beijing Haidian District",CN,86 FR 18432,Items subject to EAR,Presumption of denial
+BIS-026,Nanjing University of Science and Technology,NJUST,"Nanjing Jiangsu",CN,86 FR 18432,Items subject to EAR,Presumption of denial
+BIS-027,Russian Aircraft Corporation MiG,RSK MiG,"Moscow Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-028,Sukhoi Civil Aircraft,Sukhoi,"Moscow Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-029,Tupolev,Tupolev OAO,"Moscow Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-030,United Aircraft Corporation,UAC,"Moscow Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-031,Russian Railways OJSC,RZD,"Moscow Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-032,KamAZ,KamAZ PTC,"Naberezhnye Chelny Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-033,Almaz-Antey Air and Space Defence Corp,Almaz Antey,"Moscow Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-034,Tactical Missiles Corporation,KTRV,"Korolyov Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-035,Belavia Belarusian Airlines,Belavia,"Minsk Belarus",BY,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-036,Joint Stock Company Information Satellite Systems,JSC ISS,"Zheleznogorsk Russia",RU,87 FR 13141,All items subject to EAR,Policy of denial
+BIS-037,Iran Aviation Industries Organization,IAIO,"Tehran Iran",IR,86 FR 12529,All items subject to EAR,Presumption of denial
+BIS-038,Iran Electronics Industries,IEI,"Tehran Iran",IR,86 FR 12529,All items subject to EAR,Presumption of denial
+BIS-039,Iran Aircraft Industries,IACI,"Tehran Iran",IR,86 FR 12529,All items subject to EAR,Presumption of denial
+BIS-040,Iran Aerospace Industries Organization,AIO,"Tehran Iran",IR,86 FR 12529,All items subject to EAR,Presumption of denial
+BIS-041,Defense Industries Organization (Iran),DIO,"Tehran Iran",IR,86 FR 12529,All items subject to EAR,Presumption of denial
+BIS-042,Korea Mining Development Trading Corporation,KOMID,"Pyongyang DPRK",KP,79 FR 6217,All items subject to EAR,Presumption of denial
+BIS-043,Korea Tangun Trading Corporation,Tangun,"Pyongyang DPRK",KP,79 FR 6217,All items subject to EAR,Presumption of denial
+BIS-044,Korea Ryonbong General Corporation,Ryonbong,"Pyongyang DPRK",KP,79 FR 6217,All items subject to EAR,Presumption of denial
+BIS-045,Green Pine Associated Corporation,Green Pine,"Pyongyang DPRK",KP,79 FR 6217,All items subject to EAR,Presumption of denial
+BIS-046,Pakistan National Defense Complex,NDC,"Islamabad Pakistan",PK,72 FR 65040,All items subject to EAR,Presumption of denial
+BIS-047,Pakistan Atomic Energy Commission,PAEC,"Islamabad Pakistan",PK,72 FR 65040,All items subject to EAR,Presumption of denial
+BIS-048,Khan Research Laboratories,KRL,"Kahuta Pakistan",PK,72 FR 65040,All items subject to EAR,Presumption of denial
+BIS-049,Bangalore Electronics Research Lab Fictitious,BERL,"Bangalore India",IN,85 FR 83792,Items subject to EAR,Case by case
+BIS-050,Indian Rare Earths Ltd.,IREL,"Mumbai India",IN,85 FR 83792,Items subject to EAR,Case by case
+BIS-051,Xinjiang Production and Construction Corps,XPCC;Bingtuan,"Urumqi Xinjiang",CN,85 FR 44159,All items subject to EAR,Presumption of denial
+BIS-052,Aksu Huafu Modern Media,Aksu Huafu,"Aksu Xinjiang",CN,85 FR 44159,Cotton items,Presumption of denial
+BIS-053,Hetian Haolin Hair Accessories,Hetian Haolin,"Hetian Xinjiang",CN,85 FR 83792,All items subject to EAR,Presumption of denial
+BIS-054,Hoshine Silicon Industry Co. Ltd.,Hoshine,"Shihezi Xinjiang",CN,86 FR 33459,Silicon items,Presumption of denial
+BIS-055,Xinjiang GCL New Energy,GCL Xinjiang,"Karamay Xinjiang",CN,87 FR 80130,Silicon items,Presumption of denial
+BIS-056,Xinjiang Daqo New Energy,Daqo Xinjiang,"Shihezi Xinjiang",CN,87 FR 80130,Silicon items,Presumption of denial
+BIS-057,Beijing Genomics Institute,BGI Beijing,"Beijing",CN,85 FR 44159,Items subject to EAR,Case by case
+BIS-058,BGI Research,BGI;Beijing Genomics,"Shenzhen",CN,85 FR 44159,Items subject to EAR,Case by case
+BIS-059,Forensic Genomics International,FGI Tianjin,"Tianjin Binhai",CN,85 FR 44159,Items subject to EAR,Case by case
+BIS-060,China Electronics Technology Group Corporation,CETC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-061,Aviation Industry Corporation of China,AVIC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-062,China National Aero-Technology Import & Export Corporation,CATIC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-063,Aero Engine Corporation of China,AECC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-064,China South Industries Group,CSGC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-065,Norinco Group,Norinco;China North Industries,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-066,China Shipbuilding Industry Corporation,CSIC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-067,China State Shipbuilding Corporation,CSSC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-068,China Aerospace Science and Technology Corporation,CASC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-069,China Aerospace Science and Industry Corporation,CASIC,"Beijing",CN,87 FR 6022,All items subject to EAR,Presumption of denial
+BIS-070,National Engineering Research Center for Quantum Computing,QC Beijing,"Beijing",CN,87 FR 73719,Items subject to EAR,Presumption of denial
+BIS-071,Beijing AOSC Holdings,AOSC,"Beijing",CN,88 FR 18988,Items subject to EAR,Case by case
+BIS-072,Wuxi Tongding Information Technology,Tongding,"Wuxi Jiangsu",CN,87 FR 73719,Items subject to EAR,Presumption of denial
+BIS-073,Russian Federal Security Service Linked Entity,FSB-X,"Moscow Russia",RU,87 FR 31195,All items subject to EAR,Policy of denial
+BIS-074,Belarusian KGB Linked Entity,KGB-B,"Minsk Belarus",BY,87 FR 31195,All items subject to EAR,Policy of denial
+BIS-075,Iran Revolutionary Guard Affiliated Entity,IRGC-AE,"Tehran Iran",IR,86 FR 12529,All items subject to EAR,Presumption of denial
+BIS-076,Burmese Ministry of Defence,Tatmadaw,"Naypyidaw Myanmar",MM,86 FR 5867,All items subject to EAR,Presumption of denial
+BIS-077,Cuba Trading Company,CTC,"Havana Cuba",CU,72 FR 33646,All items subject to EAR,Policy of denial
+BIS-078,Venezuela Direct Aircraft,VDA,"Caracas Venezuela",VE,86 FR 47770,All items subject to EAR,Policy of denial
+BIS-079,Bank of China Aviation Subsidiary Fictitious,BOC-AS,"Beijing",CN,DEMO,Items subject to EAR,Demo stub
+BIS-080,Shanghai Industrial Trade Co. Ltd.,SITC Shanghai,"Shanghai",CN,DEMO,Items subject to EAR,Demo stub

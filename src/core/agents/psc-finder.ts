@@ -29,6 +29,7 @@ import { calculateDuty } from "./duty-calculator";
 import type { ClassificationResultT } from "@/core/schemas/classification";
 import { mapWithConcurrency } from "@/core/lib/concurrency";
 import { withRetry } from "@/core/lib/retry";
+import { runRiskScreen } from "./risk-screener";
 
 /** Days in the PSC window (CBP rule of thumb — 314 days post-liquidation ≈ 1y from entry). */
 const PSC_WINDOW_DAYS = 11 * 30;
@@ -401,6 +402,16 @@ export async function findRefundOpportunities(
     "Recoverable amounts assume CBP accepts the re-classification. Production filing should attach the agent's full reasoning trace from audit_log as the reasonable-care basis.",
   );
 
+  // Risk & compliance screen — deterministic, fast, no LLM. Surfaces sanctions
+  // hits / UFLPA exposure / AD-CVD cases / entity-graph anomalies that are
+  // out of scope for the refund math but in scope for the broker's review.
+  let risk_profile: PSCFindingsT["risk_profile"] = undefined;
+  try {
+    risk_profile = await runRiskScreen(historical);
+  } catch (e) {
+    notes.push(`Risk screen failed: ${e instanceof Error ? e.message : String(e)}. Refund findings are unaffected.`);
+  }
+
   const findings: PSCFindingsT = {
     importer: historical.importer,
     analyzed_at: asOf.toISOString(),
@@ -417,6 +428,7 @@ export async function findRefundOpportunities(
     total_recoverable_usd_cents: totalRecov,
     confidence_breakdown: cb,
     notes,
+    risk_profile,
   };
 
   await persistAuditLog(ctx, historical.importer, findings, traces);

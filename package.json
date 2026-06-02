@@ -22,7 +22,9 @@
     "find-refunds": "tsx scripts/find-refunds.ts",
     "render-refund-report": "tsx scripts/render-refund-report.ts",
     "seed:broker": "tsx scripts/seed-broker-queue.ts",
-    "setup:browser": "playwright-core install chromium"
+    "setup:browser": "playwright-core install chromium",
+    "risk:fetch": "tsx scripts/fetch-risk-lists.ts",
+    "risk:screen": "tsx scripts/risk-screen.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",

@@ -11,10 +11,13 @@
 
 import PDFDocument from "pdfkit";
 import type { PSCFindingsT, RefundOpportunityT } from "@/core/schemas/refund";
+import type { RiskProfileT } from "@/core/schemas/risk";
 
 const NAVY = "#0f2c4d";
 const ACCENT = "#2a7f62";
 const MUTED = "#4a4a4a";
+const WARN = "#b54a1f";
+const RISK_RED = "#b1372e";
 const LIGHT = "#dddddd";
 const RED = "#a83a3a";
 
@@ -205,6 +208,9 @@ export async function renderRefundReportToBuffer(f: PSCFindingsT): Promise<Buffe
     });
   }
 
+  // ── RISK & COMPLIANCE ──────────────────────────────────────────────────
+  if (f.risk_profile) renderRiskSection(doc, f.risk_profile);
+
   // ── METHODOLOGY ────────────────────────────────────────────────────────
   doc.addPage();
   sectionHeader(doc, "Methodology", NAVY);
@@ -300,4 +306,140 @@ export async function renderRefundReportToBuffer(f: PSCFindingsT): Promise<Buffe
 
   doc.end();
   return done;
+}
+
+// ─── Risk & Compliance section ────────────────────────────────────────────
+function renderRiskSection(doc: PDFKit.PDFDocument, r: RiskProfileT): void {
+  doc.addPage();
+  sectionHeader(doc, "Risk & compliance", NAVY);
+  doc.moveDown(0.4);
+
+  // Status banner.
+  const banner = r.overall_status === "clean"
+    ? { color: ACCENT, label: "CLEAN" }
+    : r.overall_status === "review_required"
+    ? { color: WARN, label: "REVIEW REQUIRED" }
+    : { color: RISK_RED, label: "BLOCKING" };
+  doc.save();
+  doc.rect(54, doc.y, 504, 30).fill(banner.color);
+  doc.fillColor("white").font("Helvetica-Bold").fontSize(11)
+    .text(banner.label, 54, doc.y - 25, { width: 100, align: "center" });
+  doc.fillColor("white").font("Helvetica").fontSize(10)
+    .text(r.headline, 160, doc.y - 13, { width: 388, lineBreak: false });
+  doc.restore();
+  doc.y += 14;
+  doc.moveDown(0.6);
+
+  // Sources used.
+  doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(
+    `Sources: ${r.sources_used.map((s) => `${s.name} (${s.rows.toLocaleString()} rows, refreshed ${s.last_refreshed})`).join(" · ")}`,
+    { width: 504 },
+  );
+  doc.moveDown(0.8);
+
+  // Parties screened.
+  doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(11).text("Parties screened");
+  doc.moveDown(0.2);
+  doc.fillColor(MUTED).font("Helvetica").fontSize(10).text(
+    `Importer: ${r.parties_screened.importer_name}${r.parties_screened.importer_ein ? ` (EIN ${r.parties_screened.importer_ein})` : ""}`,
+    { width: 504 },
+  );
+  if (r.parties_screened.supplier_names.length > 0) {
+    doc.text(`Suppliers (${r.parties_screened.supplier_names.length}): ${r.parties_screened.supplier_names.join(", ")}`, { width: 504 });
+  } else {
+    doc.text("Suppliers: none on file. Add supplier names per entry for fuller screening.", { width: 504 });
+  }
+  doc.moveDown(0.8);
+
+  // Sanctions check.
+  ensureSpace(doc, 80);
+  doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(11).text("Sanctions check (OFAC SDN + BIS Entity List)");
+  doc.moveDown(0.2);
+  if (r.sanctions_hits.length === 0) {
+    doc.fillColor(ACCENT).font("Helvetica").fontSize(10).text(
+      `Clean. No party matched any entry on the OFAC SDN list or BIS Entity List.`,
+      { width: 504 },
+    );
+  } else {
+    for (const h of r.sanctions_hits) {
+      ensureSpace(doc, 60);
+      doc.fillColor(h.match_quality === "exact" ? RISK_RED : WARN).font("Helvetica-Bold").fontSize(10)
+        .text(`${h.party_name} → ${h.matched_name}`, { width: 504 });
+      doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(
+        `${h.citation.source} #${h.citation.source_id} · ${h.match_quality} match (${(h.similarity * 100).toFixed(0)}% similarity) · refreshed ${h.citation.source_date}`,
+        { width: 504 },
+      );
+      doc.text(h.recommended_action, { width: 504, lineGap: 1 });
+      doc.moveDown(0.4);
+    }
+  }
+  doc.moveDown(0.6);
+
+  // UFLPA.
+  ensureSpace(doc, 80);
+  doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(11).text("UFLPA exposure (Uyghur Forced Labor Prevention Act)");
+  doc.moveDown(0.2);
+  if (r.uflpa_exposure.length === 0) {
+    doc.fillColor(ACCENT).font("Helvetica").fontSize(10).text(
+      `No UFLPA exposure. No party on the DHS UFLPA Entity List; no supplier address in XUAR or a documented labor-transfer destination.`,
+      { width: 504 },
+    );
+  } else {
+    for (const u of r.uflpa_exposure) {
+      ensureSpace(doc, 60);
+      const color = u.exposure_kind === "direct_list_match" ? RISK_RED : WARN;
+      doc.fillColor(color).font("Helvetica-Bold").fontSize(10)
+        .text(`${u.party_name} — ${u.region_or_sector}`, { width: 504 });
+      doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(
+        `${u.citation.source} · ${u.citation.quote} · refreshed ${u.citation.source_date}`,
+        { width: 504 },
+      );
+      doc.text(u.recommended_action, { width: 504, lineGap: 1 });
+      doc.moveDown(0.4);
+    }
+  }
+  doc.moveDown(0.6);
+
+  // AD/CVD cases.
+  ensureSpace(doc, 80);
+  doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(11).text("Antidumping / countervailing-duty cases active on filed HTS lines");
+  doc.moveDown(0.2);
+  if (r.add_cvd_active_cases.length === 0) {
+    doc.fillColor(ACCENT).font("Helvetica").fontSize(10).text(
+      `No active AD/CVD case matches any (HTS code, country) on the filing.`,
+      { width: 504 },
+    );
+  } else {
+    for (const c of r.add_cvd_active_cases) {
+      ensureSpace(doc, 55);
+      doc.fillColor(WARN).font("Helvetica-Bold").fontSize(10)
+        .text(`HTS ${c.hts_code_8} from ${c.country} — case ${c.case_number}${c.margin_pct != null ? ` (${c.margin_pct}%)` : ""}`, { width: 504 });
+      doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(c.product_description, { width: 504 });
+      doc.text(c.recommended_action, { width: 504, lineGap: 1 });
+      doc.moveDown(0.4);
+    }
+  }
+  doc.moveDown(0.6);
+
+  // Entity graph.
+  if (r.entity_anomalies.length > 0) {
+    ensureSpace(doc, 80);
+    doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(11).text("Entity-graph anomalies");
+    doc.moveDown(0.2);
+    for (const a of r.entity_anomalies) {
+      ensureSpace(doc, 55);
+      doc.fillColor(WARN).font("Helvetica-Bold").fontSize(10).text(a.description, { width: 504 });
+      doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(
+        `Parties: ${a.parties_involved.join("; ")}`, { width: 504 },
+      );
+      doc.text(a.recommended_action, { width: 504, lineGap: 1 });
+      doc.moveDown(0.4);
+    }
+    doc.moveDown(0.6);
+  }
+
+  doc.fillColor(MUTED).font("Helvetica-Oblique").fontSize(8).text(
+    "Every item in this section requires licensed-broker review before filing. customs-agent is not a licensed customs broker; this report is decision-support for the broker partner.",
+    { width: 504, align: "left" },
+  );
 }

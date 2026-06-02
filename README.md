@@ -4,7 +4,7 @@
 
 > **One-line pitch for an importer:** *"Send your last six months of entries. The refund finder reclassifies every line, surfaces what's recoverable, and flags the deadline before it expires — then we handle your next shipment for the same price as your current broker, with full transparency."*
 
-🎥 **Demo video:** `customs-agent-demo.mp4` (in the repo).
+🌐 **Live app:** [https://frontend-mu-ashen-13.vercel.app](https://frontend-mu-ashen-13.vercel.app)
 📐 **Architecture deep-dive:** [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) · **Source credits:** [`docs/SOURCES.md`](./docs/SOURCES.md) · **Product spec:** [`CLAUDE.md`](./CLAUDE.md)
 
 ---
