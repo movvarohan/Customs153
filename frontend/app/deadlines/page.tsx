@@ -162,29 +162,50 @@ function DeadlineRow({ e }: { e: Entry }) {
 
       {open && (
         <div className="border-t border-cardline bg-navy-50/40 px-4 py-4">
-          {/* Lifecycle timeline */}
+          {/* Lifecycle timeline — milestones alternate above/below the line so
+              labels don't collide when PSC closes ~30 days before Liquidation. */}
           <div className="mb-4">
-            <div className="relative mt-6 h-1 rounded-full bg-navy-100">
+            <div className="relative my-14 h-1 rounded-full bg-navy-100">
               <div className="absolute left-0 top-0 h-1 rounded-full bg-accent/60" style={{ width: `${pct}%` }} />
               {[
-                { iso: e.entry_date, label: "Entry" },
-                { iso: e.psc_deadline, label: "PSC closes" },
-                { iso: e.liquidation_date, label: "Liquidation" },
-                { iso: e.protest_deadline, label: "Protest closes" },
+                { iso: e.entry_date,        label: "Entry",   above: true  },
+                { iso: e.psc_deadline,      label: "PSC closes",   above: false },
+                { iso: e.liquidation_date,  label: "Liquidation",  above: true  },
+                { iso: e.protest_deadline,  label: "Protest closes", above: false },
               ].map((m, i) => {
                 const left = Math.max(0, Math.min(100, mark(m.iso)));
                 return (
-                  <div key={i} className="absolute -top-1 flex -translate-x-1/2 flex-col items-center" style={{ left: `${left}%` }}>
-                    <span className="h-3 w-3 rounded-full border-2 border-white bg-navy" />
-                    <span className="mt-1 whitespace-nowrap text-[9px] font-semibold text-navy">{m.label}</span>
-                    <span className="text-[9px] text-muted">{m.iso}</span>
+                  <div
+                    key={i}
+                    className={classNames(
+                      "absolute flex -translate-x-1/2 flex-col items-center",
+                      m.above ? "bottom-2" : "top-2",
+                    )}
+                    style={{ left: `${left}%` }}
+                  >
+                    {m.above && (
+                      <>
+                        <span className="whitespace-nowrap text-[9px] font-semibold text-navy">{m.label}</span>
+                        <span className="text-[9px] text-muted">{m.iso}</span>
+                        <span className="my-0.5 h-1.5 w-px bg-navy/40" aria-hidden />
+                        <span className="h-3 w-3 rounded-full border-2 border-white bg-navy" />
+                      </>
+                    )}
+                    {!m.above && (
+                      <>
+                        <span className="h-3 w-3 rounded-full border-2 border-white bg-navy" />
+                        <span className="my-0.5 h-1.5 w-px bg-navy/40" aria-hidden />
+                        <span className="whitespace-nowrap text-[9px] font-semibold text-navy">{m.label}</span>
+                        <span className="text-[9px] text-muted">{m.iso}</span>
+                      </>
+                    )}
                   </div>
                 );
               })}
-              {/* Today marker */}
-              <div className="absolute -top-3 flex -translate-x-1/2 flex-col items-center" style={{ left: `${pct}%` }}>
-                <span className="text-[9px] font-bold text-accent-700">today</span>
-                <span className="h-5 w-0.5 bg-accent-700" />
+              {/* Today marker — vertical bar across both lanes, label at the top */}
+              <div className="absolute -top-12 flex h-[88px] -translate-x-1/2 flex-col items-center" style={{ left: `${pct}%` }}>
+                <span className="rounded-full bg-accent-700 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">today</span>
+                <span className="mt-0.5 flex-1 w-0.5 bg-accent-700/80" />
               </div>
             </div>
           </div>
