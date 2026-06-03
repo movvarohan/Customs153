@@ -7,6 +7,17 @@
 🌐 **Live app:** [https://frontend-mu-ashen-13.vercel.app](https://frontend-mu-ashen-13.vercel.app)
 📐 **Architecture deep-dive:** [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) · **Source credits:** [`docs/SOURCES.md`](./docs/SOURCES.md) · **Product spec:** [`CLAUDE.md`](./CLAUDE.md)
 
+### Quick navigation
+
+| For graders | Where to look |
+|---|---|
+| **Two-minute project overview** | Sections below — *Why this project* → *What was built* → *Evaluation*. |
+| **Try it live, without installing** | The Vercel link above — bundled sample data, all surfaces explorable. |
+| **Install + run locally** | [Quickstart](#quickstart-communication--reproducibility) (Node 22, `npm install`, `npm start`, open `:3000`). |
+| **AI-tool disclosure** | [Section near the bottom](#ai-tool-usage-disclosure-process--integrity). |
+| **Sources / citations** | [`docs/SOURCES.md`](./docs/SOURCES.md) — every public dataset, library, and reference used. |
+| **Repo guide** | [End of this README](#repo-guide-for-graders-where-to-look-first) — direct links to the classifier, the benchmark, the honest negative result, the risk screener, and the commit history. |
+
 ---
 
 ## Why this project (Problem & Insight)
@@ -24,19 +35,20 @@ In 2026 the United States collects **over $80 billion a year in tariffs**, and *
 
 ## What was built (Execution)
 
-Ten foundation-model agents wired through a clean architecture, eight web surfaces, a 100-case CBP-grounded benchmark, and a CLI mirror — all runnable locally, with sample data bundled so the whole thing is explorable in five minutes.
+Eleven foundation-model agents wired through a clean architecture, fourteen web surfaces, a 100-case CBP-grounded benchmark, and a CLI mirror — all runnable locally, with sample data bundled so the whole thing is explorable in five minutes.
 
 ### Web surfaces
 
 | Surface | What it does | Agents |
 |---|---|---|
-| **Process invoice** | Drop an invoice / packing list / bill of lading → one shipment record → each line classified live (GRI reasoning streams token-by-token) → full landed-duty breakdown. Expand any line for the retrieved candidates, tariff-engineering alternatives, a CBP focused-assessment defense packet, a live CROSS rulings check, and an adversarial debate transcript. | extractor, classifier, duty-calculator, counterfactual, audit-defense, cross-verifier, debate |
-| **Find refunds** | Upload 12 months of entries (JSON export *or* CBP Form 7501 PDFs). The agent re-classifies every line, quantifies recoverable duty, drafts Post Summary Corrections, and renders a broker-facing PDF report. Live progress + recoverable-so-far counter. | entry-summary-parser, classifier, duty-calculator, psc-finder |
-| **Broker queue** | The licensed broker's view: agent classifications to confirm or correct, sorted by duty stakes. Expand any line for the **Reasonable-care record** — the four legal steps the agent followed (product facts used, tariff notes considered, CBP rulings cited, why competing codes were rejected) plus the GRI rule, confidence, and reasoning. Corrections write to a **per-importer SKU memory** that becomes a strong prior the next time the same product ships — the system learns. | sku-memory |
+| **Process invoice** | Drop an invoice / packing list / bill of lading → one shipment record → each line classified live (GRI reasoning streams token-by-token) → full landed-duty breakdown. Expand any line for the retrieved candidates, tariff-engineering alternatives, a CBP focused-assessment defense packet, a live CROSS rulings check, and an adversarial debate transcript. A risk badge runs in the background, screening the consignee + vendor against OFAC SDN, BIS Entity List, and UFLPA, plus AD/CVD scope on every filed HTS line. | extractor, classifier, duty-calculator, counterfactual, audit-defense, cross-verifier, debate, risk-screener |
+| **Find refunds** | Upload 12 months of entries (JSON export *or* CBP Form 7501 PDFs). The agent re-classifies every line, quantifies recoverable duty, drafts Post Summary Corrections, and renders a broker-facing PDF report. Live progress + recoverable-so-far counter. The same audit runs the risk screen across every party named on every entry; the report's **Risk & Compliance** section sits between the opportunities and the methodology. | entry-summary-parser, classifier, duty-calculator, psc-finder, risk-screener |
+| **Risk screen** | Standalone screen for any importer + suppliers. Editable rows, country of origin, optional HTS codes for AD/CVD scope. Outputs a `RiskProfile` with sanctions hits, UFLPA exposure, AD/CVD scope matches, and entity-graph anomalies — every finding carries a citation back to the underlying public source (OFAC SDN row id, BIS docket, UFLPA entry number) and a refresh date. Three sample loaders for the demo: clean importer + 2 XUAR suppliers, direct sanctions hit, AD/CVD scope match. | risk-screener |
+| **Broker queue** | The licensed broker's view: agent classifications to confirm or correct, sorted by duty stakes. Expand any line for the **Reasonable-care record** — the four legal steps the agent followed (product facts used, tariff notes considered, CBP rulings cited, why competing codes were rejected) plus the GRI rule, confidence, and reasoning. A risk badge at the top surfaces compliance for the whole importer, click-through to the standalone view. Corrections write to a **per-importer SKU memory** that becomes a strong prior the next time the same product ships — the system learns. | sku-memory, risk-screener |
 | **Policy Lab** | A what-if simulator: pick a scenario (Universal 10% reciprocal · Section 301 + reciprocal stack · Reshore to Vietnam · etc.) and instantly re-run the duty math across the whole catalog. Shows landed-cost delta, margin impact, and per-SKU exposure. | tariff-rates, duty-calculator |
 | **Catalog / Sourcing engine** | For a product, where could production move and what would it cost? Live web research names real factories in candidate countries, grounds labor cost in **World Bank country profiles**, and renders a **landed-cost map** comparing total cost across origins. | sourcing-intel, reroute-intel |
 | **Factory Finder** | Deep dive on a single product + country: research specific named factories, their capabilities, certifications, capacity, whether they're taking new clients, and a tactical-bridge-vs-long-term-partner fit. Drafts the outreach email. | factory-finder, factory-deepdive |
-| **Coordination** | One timeline per shipment keeping the importer, the licensed broker, and the freight forwarder aligned — every status change, every flag, every deadline. | coordinator |
+| **Coordination** | One timeline per shipment keeping the importer, the licensed broker, and the freight forwarder aligned. The agent drafts outreach (the channel recommendation, the subject line, the body, a call talk-track) and the panel exposes **real action buttons** — Email opens the user's mail client via `mailto:` with the draft prefilled, Text opens the SMS app via `sms:`, Call runs a tap-to-dial UX with a live duration counter. Human still reviews and dispatches; nothing is auto-sent. | coordinator |
 | **Deadlines** | A live ticker of PSC and protest windows by entry, sorted by what expires next, with the recoverable-dollar amount at stake. So nothing recoverable quietly expires. | psc-finder |
 | **Reg Watch** | Monitors the live Federal Register feed (CBP / USTR / USITC / Commerce), parses each rule for affected HTS codes / countries / duty direction, and flags which of the importer's SKUs are hit with a dollar estimate. | tariff-monitor |
 | **Audit-broker** | A real Playwright browser signs into the ACE Importer Portal, pulls the entry summaries, and feeds them straight into the refund finder — no manual data entry. Falls back to a guided walkthrough if no browser is installed. | ace-browser-agent, psc-finder |
@@ -44,16 +56,17 @@ Ten foundation-model agents wired through a clean architecture, eight web surfac
 | **Audit trail** | The immutable reasonable-care binder: every classification logged with timestamp, model + prompt version, GRI rule, confidence, cited sources, and full reasoning trace — explicitly rendered as the four legal pillars. This is the binder you hand CBP if they open a focused assessment. | — (reads audit_log) |
 | **Copilot** | Conversational interface over the whole system. Ask "what's the HTS code and landed duty for Bluetooth earbuds from China" and get a cited answer pulled through the same retrieval + GRI pipeline. | copilot, classifier, duty-calculator |
 
-Everything is also runnable from the CLI: `npm run process-invoice`, `npm run find-refunds`, `npm run eval:classifier`.
+Everything is also runnable from the CLI: `npm run process-invoice`, `npm run find-refunds`, `npm run risk:screen`, `npm run eval:classifier`.
 
 ### Architecture (clean / local-first / Cloudflare-later)
 
 ```
 src/
 ├── core/              # pure business logic — depends only on src/interfaces/
-│   ├── agents/        # ten agents (extractor, classifier, duty-calculator, refund-finder,
+│   ├── agents/        # eleven agents (extractor, classifier, duty-calculator, refund-finder,
 │   │   │              #   sourcing-intel, factory-finder, factory-deepdive, reg-watch,
-│   │   │              #   coordinator, copilot) + cross-verifier + debate + counterfactual
+│   │   │              #   coordinator, copilot, risk-screener) + cross-verifier + debate
+│   │   │              #   + counterfactual + audit-defense
 │   │   └── prompts/   # versioned classifier prompts (v1 → v3.2, all kept on disk)
 │   ├── routes/        # Hono routes — runtime-agnostic, AppContext-injected
 │   ├── lib/           # tariff rates, FX, PDF renderer, SKU memory, retry/concurrency,
@@ -68,7 +81,9 @@ src/
 
 frontend/              # Next.js 15 + React 19 + Tailwind. Twelve pages. Proxies /api.
 evals/                 # 100-case CBP-CROSS-grounded gold set + harness + reports
-data/                  # HTS schedule, tariff rates, sample invoices/entries (committed)
+data/                  # HTS schedule, tariff rates, sample invoices/entries,
+                       #   risk/ (OFAC SDN + BIS Entity List + UFLPA + AD/CVD cases)
+                       #   — all committed so the repo runs offline
 scripts/               # HTS fetch/index, sample generators, eval + seed runners
 tests/                 # 22 keyless unit tests on the deterministic core
 ```
@@ -126,6 +141,10 @@ Detail: [`evals/GOLD_REVIEW.md`](./evals/GOLD_REVIEW.md), [`evals/accept-set-aud
 - **A verifier experiment I rejected.** A same-model second pass scored **5 rescues / 5 breaks (net zero)**, so I didn't ship it; instead I shipped a different verifier — the CROSS-grounded one that brings *new* external evidence ([`evals/verifier-eval-report.md`](./evals/verifier-eval-report.md)). This is the kind of result that I'd be tempted to bury and instead chose to surface.
 - **Confidence calibration** — high-confidence classifications are right far more often than low-confidence ones, so the licensed broker can triage on it.
 
+### Risk screen — citation-grounded by construction
+
+The risk-screener is **deterministic** — no LLM in the screen — so the chain from finding to evidence is verifiable in source. Every `sanctions_hit` / `uflpa_exposure` / `add_cvd_active_case` / `entity_anomaly` carries a `citation` with the **source** (OFAC SDN, BIS Entity List, UFLPA Entity List, UFLPA Region Scrutiny, Entity Graph), the **source_id** (OFAC UID, BIS docket, UFLPA entry number, AD/CVD case number), the **source_date** the dataset was last refreshed, and the **quote** from the row. Matching uses normalised-name + trigram-Jaccard with three thresholds (exact ≥ 0.99, fuzzy ≥ 0.85, partial ≥ 0.70) so similarity scores are reproducible. The three lists are committed in [`data/risk/`](./data/risk) so the demo runs offline; `npm run risk:fetch` refreshes them from the upstream public sources documented in [`data/risk/README.md`](./data/risk/README.md). Run `npm run risk:screen -- data/sample-entries/amazon-fba.json` to verify the demo claim end-to-end.
+
 ### Automated tests
 
 ```bash
@@ -173,10 +192,14 @@ Open <http://localhost:3000>. **The frontend proxies `/api/*` to the backend**, 
 
 **Demo data is bundled.** The Broker queue self-seeds a realistic catalog of eight SKUs with full reasonable-care records pre-populated for six of them. Process Invoice / Find Refunds each have a one-click "Load a sample" button. So the whole app is explorable from a cold start.
 
-CLI equivalents:
+CLI equivalents (each mirrors a web surface; useful for grading without firing up the UI):
 ```bash
 npm run process-invoice -- data/sample-invoices/shenzhen-electronics.pdf
 npm run find-refunds    -- data/sample-entries/amazon-fba.json
+npm run risk:screen     -- data/sample-entries/amazon-fba.json     # standalone risk profile
+npm run eval:classifier                                            # the benchmark
+npm run test                                                       # 22 keyless unit tests
+npm run risk:fetch                                                 # refresh the OFAC/BIS/UFLPA lists from upstream
 ```
 
 ### Troubleshooting
@@ -245,7 +268,8 @@ No code was forked from existing customs-tech repos. The product, architecture, 
 | **The architecture rationale** | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). |
 | **What's the classifier actually doing?** | [`src/core/agents/classifier.ts`](./src/core/agents/classifier.ts) (start at line 274 `classify`); the system prompt in [`src/core/agents/prompts/`](./src/core/agents/prompts). |
 | **The reasonable-care record** | Run the app, open `/broker`, expand any line. Or read [`frontend/app/broker/page.tsx`](./frontend/app/broker/page.tsx) (the four-pillar Drawer panel). |
+| **The risk & compliance screen** | Open `/risk` and click any sample. Backed by [`src/core/agents/risk-screener.ts`](./src/core/agents/risk-screener.ts) + the three federal lists in [`data/risk/`](./data/risk). |
 | **The benchmark** | [`evals/GOLD_REVIEW.md`](./evals/GOLD_REVIEW.md), [`evals/opus-vs-sonnet-report.md`](./evals/opus-vs-sonnet-report.md), [`evals/retrieval-diagnostic.md`](./evals/retrieval-diagnostic.md). Run `npm run eval:classifier`. |
 | **The honest failure** | [`evals/verifier-eval-report.md`](./evals/verifier-eval-report.md) — a same-model verifier that didn't help, kept in the repo because the negative result mattered. |
 | **The 22-test deterministic core** | `npm test`, or [`tests/`](./tests). |
-| **The commit history** | `git log --oneline` — 112 commits, each a unit of work. |
+| **The commit history** | `git log --oneline` — 125+ commits, each a unit of work. |
