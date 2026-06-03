@@ -187,11 +187,13 @@ function CoordinatePanel({ sh }: { sh: Shipment }) {
   const [state, setState] = useState<null | "loading" | Draft>(null);
   const [err, setErr] = useState<string | null>(null);
   const [routed, setRouted] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [emailSent, setEmailSent] = useState<null | { at: string }>(null);
+  const [textSent, setTextSent] = useState<null | { at: string }>(null);
+  const [callPhase, setCallPhase] = useState<"idle" | "dialing" | "connected" | "complete">("idle");
+  const [callStartedAt, setCallStartedAt] = useState<string | null>(null);
 
   const draft = async () => {
-    setState("loading"); setErr(null); setRouted(false); setSent(false);
+    setState("loading"); setErr(null); setRouted(false); setEmailSent(null); setTextSent(null); setCallPhase("idle"); setCallStartedAt(null);
     try {
       const r = await fetch(`${API_BASE_URL}/api/coordination/draft`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ shipment_id: sh.id }),
@@ -214,10 +216,6 @@ function CoordinatePanel({ sh }: { sh: Shipment }) {
 
   const d = state && state !== "loading" ? state : null;
   const o = d?.outreach;
-  const copyEmail = () => {
-    if (!o) return;
-    navigator.clipboard?.writeText(`Subject: ${o.email.subject}\n\n${o.email.body}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
-  };
 
   return (
     <div className="mt-4 rounded-md border border-accent/30 bg-accent-50/20 p-3">
@@ -313,30 +311,210 @@ function CoordinatePanel({ sh }: { sh: Shipment }) {
           )}
 
           {o && (
-            <div className="rounded-md border border-cardline bg-white p-2.5">
-              <div className="mb-1 flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">Outreach to {o.email.to_party}</span>
-                <span className="rounded-full bg-navy-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-navy">recommend: {o.recommended_channel}</span>
-                {o.urgency === "high" && <span className="rounded-full bg-warn/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-warn">urgent</span>}
-                <button onClick={copyEmail} className="ml-auto rounded border border-accent/40 px-2 py-0.5 text-[10px] font-semibold text-accent-700 hover:bg-accent-50">{copied ? "Copied ✓" : "Copy email"}</button>
-              </div>
-              <div className="text-navy"><span className="text-muted">Subject:</span> {o.email.subject}</div>
-              <pre className="mt-1 whitespace-pre-wrap font-sans text-[11px] leading-snug text-muted">{o.email.body}</pre>
-              <details className="mt-2">
-                <summary className="cursor-pointer text-[10px] font-semibold text-accent-700">Call script &amp; SMS</summary>
-                <div className="mt-1 rounded bg-navy-50/50 p-2 text-muted"><span className="font-semibold text-navy">Call: </span>{o.call_script}</div>
-                <div className="mt-1 rounded bg-navy-50/50 p-2 text-muted"><span className="font-semibold text-navy">SMS: </span>{o.sms}</div>
-              </details>
-              <div className="mt-2 flex items-center gap-2">
-                {!sent ? (
-                  <button onClick={() => setSent(true)} className="rounded-md border border-cardline px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-navy-50">Mark as sent</button>
-                ) : <span className="text-[11px] font-semibold text-accent-700">Marked sent ✓</span>}
-                <span className="text-[10px] italic text-muted">Drafts only — a human reviews and sends; nothing is auto-sent.</span>
-              </div>
+            <OutreachPanel
+              outreach={o}
+              emailSent={emailSent}
+              textSent={textSent}
+              callPhase={callPhase}
+              callStartedAt={callStartedAt}
+              onSendEmail={() => {
+                // Real action: open the user's mail client with subject + body prefilled.
+                const subject = encodeURIComponent(o.email.subject);
+                const body = encodeURIComponent(o.email.body);
+                window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                setEmailSent({ at: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) });
+              }}
+              onSendText={() => {
+                window.location.href = `sms:?&body=${encodeURIComponent(o.sms)}`;
+                setTextSent({ at: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) });
+              }}
+              onStartCall={() => {
+                setCallStartedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+                setCallPhase("dialing");
+                window.setTimeout(() => setCallPhase((p) => (p === "dialing" ? "connected" : p)), 1800);
+              }}
+              onEndCall={() => setCallPhase("complete")}
+              onResetCall={() => { setCallPhase("idle"); setCallStartedAt(null); }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OutreachPanel({
+  outreach: o,
+  emailSent, textSent, callPhase, callStartedAt,
+  onSendEmail, onSendText, onStartCall, onEndCall, onResetCall,
+}: {
+  outreach: Outreach;
+  emailSent: { at: string } | null;
+  textSent: { at: string } | null;
+  callPhase: "idle" | "dialing" | "connected" | "complete";
+  callStartedAt: string | null;
+  onSendEmail: () => void;
+  onSendText: () => void;
+  onStartCall: () => void;
+  onEndCall: () => void;
+  onResetCall: () => void;
+}) {
+  const [tab, setTab] = useState<"email" | "call" | "sms">(o.recommended_channel);
+
+  return (
+    <div className="rounded-md border border-cardline bg-white p-2.5">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+          Outreach to {o.email.to_party}
+        </span>
+        <span className="rounded-full bg-navy-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-navy">
+          agent recommends: {o.recommended_channel}
+        </span>
+        {o.urgency === "high" && (
+          <span className="rounded-full bg-warn/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-warn">
+            urgent
+          </span>
+        )}
+      </div>
+
+      {/* Channel tabs */}
+      <div className="mb-2 flex gap-1 rounded-md bg-navy-50/50 p-1 text-[11px] font-semibold">
+        <ChannelTab kind="email" active={tab === "email"} recommended={o.recommended_channel === "email"} sent={!!emailSent} onClick={() => setTab("email")} />
+        <ChannelTab kind="call"  active={tab === "call"}  recommended={o.recommended_channel === "call"}  sent={callPhase === "complete"} onClick={() => setTab("call")} />
+        <ChannelTab kind="sms"   active={tab === "sms"}   recommended={o.recommended_channel === "sms"}   sent={!!textSent} onClick={() => setTab("sms")} />
+      </div>
+
+      {/* Email tab */}
+      {tab === "email" && (
+        <div>
+          <div className="text-[12px] text-navy"><span className="text-muted">To:</span> <span className="font-medium">{o.email.to_party}</span></div>
+          <div className="text-[12px] text-navy"><span className="text-muted">Subject:</span> {o.email.subject}</div>
+          <pre className="mt-1.5 whitespace-pre-wrap rounded-md border border-cardline bg-navy-50/40 p-2 font-sans text-[11px] leading-snug text-navy">{o.email.body}</pre>
+          {emailSent ? (
+            <div className="mt-2 flex items-center gap-2 rounded-md border border-accent/40 bg-accent-50/60 px-2.5 py-1.5 text-[11px]">
+              <span className="text-base">✓</span>
+              <span className="font-semibold text-accent-700">Email opened in your mail client at {emailSent.at}</span>
+              <button onClick={onSendEmail} className="ml-auto text-[10px] font-semibold text-accent-700 underline hover:no-underline">Open again</button>
+            </div>
+          ) : (
+            <button
+              onClick={onSendEmail}
+              className="mt-2 inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-accent-700"
+            >
+              <span aria-hidden>✉️</span> Send email
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Call tab */}
+      {tab === "call" && (
+        <div>
+          <div className="text-[12px] text-navy"><span className="text-muted">Call:</span> <span className="font-medium">{o.email.to_party}</span></div>
+          <div className="mt-1.5 rounded-md border border-cardline bg-navy-50/40 p-2 text-[11px] leading-snug text-navy">
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-muted">Talk track</span>
+            <div className="mt-0.5">{o.call_script}</div>
+          </div>
+          {callPhase === "idle" && (
+            <button
+              onClick={onStartCall}
+              className="mt-2 inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-accent-700"
+            >
+              <span aria-hidden>📞</span> Call {o.email.to_party}
+            </button>
+          )}
+          {(callPhase === "dialing" || callPhase === "connected") && (
+            <CallActive party={o.email.to_party} startedAt={callStartedAt} phase={callPhase} onEnd={onEndCall} />
+          )}
+          {callPhase === "complete" && (
+            <div className="mt-2 flex items-center gap-2 rounded-md border border-accent/40 bg-accent-50/60 px-2.5 py-1.5 text-[11px]">
+              <span className="text-base">✓</span>
+              <span className="font-semibold text-accent-700">Call completed at {callStartedAt}</span>
+              <button onClick={onResetCall} className="ml-auto text-[10px] font-semibold text-accent-700 underline hover:no-underline">Call again</button>
             </div>
           )}
         </div>
       )}
+
+      {/* SMS tab */}
+      {tab === "sms" && (
+        <div>
+          <div className="text-[12px] text-navy"><span className="text-muted">Text:</span> <span className="font-medium">{o.email.to_party}</span></div>
+          <pre className="mt-1.5 whitespace-pre-wrap rounded-md border border-cardline bg-navy-50/40 p-2 font-sans text-[11px] leading-snug text-navy">{o.sms}</pre>
+          {textSent ? (
+            <div className="mt-2 flex items-center gap-2 rounded-md border border-accent/40 bg-accent-50/60 px-2.5 py-1.5 text-[11px]">
+              <span className="text-base">✓</span>
+              <span className="font-semibold text-accent-700">Text opened in your SMS app at {textSent.at}</span>
+              <button onClick={onSendText} className="ml-auto text-[10px] font-semibold text-accent-700 underline hover:no-underline">Open again</button>
+            </div>
+          ) : (
+            <button
+              onClick={onSendText}
+              className="mt-2 inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-accent-700"
+            >
+              <span aria-hidden>💬</span> Send text
+            </button>
+          )}
+        </div>
+      )}
+
+      <p className="mt-2 text-[10px] italic text-muted">
+        The agent drafts; a human reviews and dispatches. Email and text open your mail/SMS client with the draft prefilled —
+        nothing is auto-sent.
+      </p>
+    </div>
+  );
+}
+
+function ChannelTab({ kind, active, recommended, sent, onClick }: { kind: "email" | "call" | "sms"; active: boolean; recommended: boolean; sent: boolean; onClick: () => void }) {
+  const icon = kind === "email" ? "✉️" : kind === "call" ? "📞" : "💬";
+  const label = kind === "email" ? "Email" : kind === "call" ? "Call" : "Text";
+  return (
+    <button
+      onClick={onClick}
+      className={classNames(
+        "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 transition",
+        active ? "bg-white text-navy shadow-sm ring-1 ring-cardline" : "text-muted hover:bg-white/60 hover:text-navy",
+      )}
+    >
+      <span aria-hidden>{icon}</span>
+      <span>{label}</span>
+      {recommended && !sent && <span className="rounded-full bg-accent/20 px-1.5 py-0 text-[9px] font-bold uppercase tracking-wider text-accent-700">rec</span>}
+      {sent && <span className="text-[10px] text-accent-700">✓</span>}
+    </button>
+  );
+}
+
+function CallActive({ party, startedAt, phase, onEnd }: { party: string; startedAt: string | null; phase: "dialing" | "connected"; onEnd: () => void }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (phase !== "connected") return;
+    const t = window.setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [phase]);
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
+  return (
+    <div className="mt-2 overflow-hidden rounded-md border border-accent/50 bg-gradient-to-br from-navy to-accent-700 text-white shadow-sm">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 text-base">
+          {phase === "dialing" ? <span className="animate-pulse">📞</span> : "📞"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[12px] font-semibold">{party}</div>
+          <div className="text-[10px] opacity-80">
+            {phase === "dialing" && <span className="animate-pulse">Dialing…</span>}
+            {phase === "connected" && <span>Connected · {mm}:{ss}</span>}
+            {startedAt && <span> · started {startedAt}</span>}
+          </div>
+        </div>
+        <button
+          onClick={onEnd}
+          className="rounded-md bg-warn/90 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-warn"
+        >
+          End call
+        </button>
+      </div>
     </div>
   );
 }
