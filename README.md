@@ -15,15 +15,19 @@ Long-term product spec: [`CLAUDE.md`](./CLAUDE.md)
 ## Contents
 
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Setup](#setup)
-4. [Usage](#usage)
-5. [Evaluation](#evaluation)
-6. [Known limitations](#known-limitations)
-7. [Roadmap](#roadmap)
-8. [AI assistance](#ai-assistance)
-9. [References and acknowledgements](#references-and-acknowledgements)
-10. [Legal posture](#legal-posture)
+2. [Technology stack](#technology-stack)
+3. [Architecture](#architecture)
+4. [Setup](#setup)
+5. [Usage](#usage)
+6. [API reference](#api-reference)
+7. [Evaluation](#evaluation)
+8. [Known limitations](#known-limitations)
+9. [Roadmap](#roadmap)
+10. [AI assistance](#ai-assistance)
+11. [References and acknowledgements](#references-and-acknowledgements)
+12. [Security and data handling](#security-and-data-handling)
+13. [License](#license)
+14. [Legal posture](#legal-posture)
 
 ## Overview
 
@@ -67,6 +71,52 @@ schedule index.
 | `/methodology` | Benchmark results, prompt-evolution history, model bake-off, retrieval diagnostic. |
 | `/audit-trail` | The reasonable-care binder: every classification logged with timestamp, model and prompt version, GRI rule, confidence, citations, and reasoning. |
 | `/copilot` | Conversational interface backed by the same retrieval and classification pipeline. |
+
+## Technology stack
+
+Runtime and language. TypeScript 5.7 in strict mode throughout. Node.js 22 runs the
+backend via `tsx`. The codebase compiles with zero `any` annotations; external
+boundaries are validated with Zod schemas.
+
+Backend. Hono 4 on `@hono/node-server` for HTTP routing. The framework was chosen
+because the same handler runs on Node today and on Cloudflare Workers tomorrow
+without modification. `@libsql/client` provides a file-backed SQLite implementation
+of the `Database` interface; the same calls work against Cloudflare D1. PDFKit
+renders the refund report. Playwright (`playwright-core`) drives the ACE replica.
+The Anthropic SDK is the only LLM client; Voyage AI is called via `fetch`.
+
+Frontend. Next.js 15 (App Router) with React 19 and Tailwind CSS. Server components
+are used where they reduce client-side JavaScript; the dynamic surfaces (Process
+Invoice, Find Refunds, Risk, Copilot) are client components that consume NDJSON
+streams from the API. The frontend proxies `/api/*` to the backend so a single port
+is exposed in production. Deployed to Vercel.
+
+AI and retrieval. Claude Sonnet 4.5 is the default reasoning model; Opus 4.7 is used
+for the highest-accuracy classifier runs and the model bake-off; Haiku 4.5 handles
+cheaper tool-using agents (coordinator, regulatory monitor). Tool-use with structured
+input schemas is the contract for every classification — free-text LLM output never
+reaches a downstream consumer. Voyage AI's `voyage-3-large` produces 1024-dimensional
+embeddings; the schedule and rulings are indexed once and stored in a local vector
+file (~88 MB) that is interchangeable with Cloudflare Vectorize.
+
+Storage. SQLite via libsql for transactional state (`audit_log`, `sku_master`,
+`filings`, `customers`). Filesystem for blobs (`./.data/docs`, `./.data/reference`).
+A JSON-backed local vector store (`src/adapters/local/local-vector-store.ts`) for
+embeddings. In-memory implementations of the cache and background-queue interfaces.
+Each is swappable for the corresponding Cloudflare service by adding the adapter
+under `src/adapters/cloudflare/` and changing one wire-up line in `src/entry/`.
+
+Tooling. `vitest` for unit tests (22 tests, ~1 s, no API keys required). `tsx` for
+the entry points. `playwright-core` for the browser-automation paths. PDFKit and
+`ffmpeg-static` (used in earlier demo generation) for static artifacts. The frontend
+ships its own `tsc --noEmit` and `next lint` gates.
+
+Data on disk. The committed `data/` directory holds the artifacts the platform
+reads: the USITC HTS schedule (chapters 01-99, ~5 MB), the indexed CBP CROSS
+rulings, a versioned tariff-rate snapshot, sample invoices and entry-summary PDFs
+for the demo flows, and the three federal screening lists (`data/risk/`). The
+one-time HTS index is the only artifact built locally rather than committed; see
+[Setup](#setup).
 
 ## Architecture
 
@@ -140,51 +190,118 @@ All monetary values are integer cents. All timestamps are UTC ISO 8601. Code in
 
 ## Setup
 
+The repository runs end-to-end on a local machine with no external services beyond
+the two LLM and embedding APIs. The web app, the CLI, and the test suite all use
+the same code path; the test suite runs without any API keys at all.
+
 ### Prerequisites
 
-- Node.js 22 or newer
-- An [Anthropic API key](https://console.anthropic.com/) (Claude Sonnet 4.5 default;
-  Opus 4.7 used for higher-accuracy runs)
-- A [Voyage AI API key](https://dashboard.voyageai.com/) for the `voyage-3-large`
-  embedding model
+- Node.js 22 or newer (`node --version` to check).
+- An Anthropic API key. Sign up at <https://console.anthropic.com/> and create a key
+  under Settings → API Keys. Claude Sonnet 4.5 is the default model; the platform
+  also supports Opus 4.7 and Haiku 4.5 via environment variables (see
+  [Configuration](#configuration)).
+- A Voyage AI API key. Sign up at <https://dashboard.voyageai.com/> and create a key
+  under API Keys. The free tier is sufficient to run the one-time HTS schedule index
+  (slower) and all runtime queries.
+
+The two keys are required only at runtime — they are read from environment variables
+and never persisted to disk or committed.
 
 ### Installation
 
+Clone the repository and install dependencies:
+
 ```bash
+git clone https://github.com/movvarohan/Customs153.git
+cd Customs153
 npm install
-cp .env.example .env                       # set ANTHROPIC_API_KEY and VOYAGE_API_KEY
-npm run db:migrate                         # apply the SQLite schema
-npm run hts:fetch                          # download the USITC tariff schedule (~6 s)
-npm run hts:index                          # embed the schedule into the local vector store
-                                           # (~10 min on a paid Voyage plan; the free tier
-                                           # works but is rate-limited)
 npm --prefix frontend install
-npm run setup:browser                      # optional: install Chromium for the ACE replica
 ```
+
+Copy the environment template and add your keys:
+
+```bash
+cp .env.example .env
+# Edit .env:
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   VOYAGE_API_KEY=pa-...
+```
+
+Initialize the database and the HTS retrieval index. This is a one-time step; the
+resulting files live under `./.data/` and are gitignored.
+
+```bash
+npm run db:migrate            # apply the SQLite schema (instant)
+npm run hts:fetch             # download the USITC HTS schedule from the official source (~6 s)
+npm run hts:index             # embed the schedule into the local vector store
+                              # paid Voyage plan: ~10 minutes
+                              # free tier (rate-limited): up to several hours
+npm run setup:browser         # optional, only if you want the live ACE replica
+```
+
+### Configuration
+
+The platform reads its configuration from environment variables. Sensible defaults
+are set in `.env.example`; override only what you need.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | required | Claude API access |
+| `VOYAGE_API_KEY` | required | Embedding API access |
+| `DEFAULT_MODEL` | `claude-sonnet-4-5` | Model used by the classifier and most agents |
+| `CHEAP_MODEL` | `claude-haiku-4-5-20251001` | Coordinator, regulatory monitor, low-stakes paths |
+| `HARD_MODEL` | `claude-opus-4-7` | Available for highest-accuracy classifier runs |
+| `PORT` | `8787` | Backend listening port |
+| `DATA_DIR` | `.data` | Local data directory (DB, vectors, blobs) |
+| `ENABLE_VERIFIER` | unset | Set to `1` to run the CROSS-grounded verifier on every classification |
+| `WORKFLOW_INTERVAL_MS` | `30000` | Background scheduler cadence |
+| `VOYAGE_INSECURE_TLS` | unset | Set to `1` only if your environment has clock skew (see Troubleshooting) |
+| `HTS_BATCH_SIZE`, `HTS_BATCH_PAUSE_MS` | unset | Throttle the one-time HTS index on free-tier Voyage |
 
 ### Running
 
+In two separate terminals:
+
 ```bash
-npm run start                              # backend on :8787
-npm --prefix frontend run dev              # frontend on :3000 (proxies /api to :8787)
+npm run start                          # terminal 1: backend on :8787
+npm --prefix frontend run dev          # terminal 2: frontend on :3000
 ```
 
-Open <http://localhost:3000>. The frontend proxies `/api/*` to the backend, so only
-port 3000 needs to be exposed externally. The broker queue seeds itself on first
-load. Process Invoice and Find Refunds each ship with a one-click sample loader.
+Open <http://localhost:3000>. Only port 3000 needs to be reachable from a browser;
+the frontend proxies `/api/*` to `:8787` server-side, so there is no CORS surface
+and no second port to forward.
+
+### Verifying the install
+
+```bash
+npm test                               # 22 unit tests, ~1 s, no API keys required
+curl http://localhost:8787/            # the backend health summary
+```
+
+The web app self-seeds: the Broker queue populates a starter SKU catalog on first
+load, Process Invoice has a "Load sample" button, Find Refunds accepts the bundled
+`data/sample-entries/amazon-fba.json`. If you can complete the Find Refunds flow on
+that sample file and download the rendered PDF, the install is working end-to-end.
 
 ### Troubleshooting
 
-- `Voyage TLS: certificate is not yet valid` — sandbox clock skew. Set
-  `VOYAGE_INSECURE_TLS=1` for Voyage calls only.
-- `Voyage 429` — rate cap on the free tier during the one-time index. Use
-  `HTS_BATCH_SIZE=20 HTS_BATCH_PAUSE_MS=60000 npm run hts:index`.
-- ACE-broker page reports `Executable doesn't exist…` — Chromium is not installed.
-  Run `npm run setup:browser`, or use the page as-is — it falls back to a guided
-  walkthrough.
-- Broker queue or Reg watch panels appear empty — confirm you are viewing through
-  port 3000 (the proxy). Direct cross-origin calls to `:8787` from a tunnel will not
-  reach the API.
+`Voyage TLS: certificate is not yet valid` — usually clock skew inside a sandbox
+or container. Setting `VOYAGE_INSECURE_TLS=1` disables TLS verification for the
+Voyage calls only and is acceptable as a workaround during local development.
+
+`Voyage 429` — the free tier rate-limits aggressively during the one-time index.
+Use `HTS_BATCH_SIZE=20 HTS_BATCH_PAUSE_MS=60000 npm run hts:index` to slow the
+indexer down; the runtime queries are small enough that the free tier handles
+them comfortably.
+
+`Executable doesn't exist...` from the Audit-broker page — Chromium is not
+installed locally. Run `npm run setup:browser`, or skip the install entirely; the
+page detects the missing binary and falls back to a guided walkthrough.
+
+Empty Broker queue or Reg Watch panel — verify you are viewing through port 3000
+rather than calling the API directly. The frontend proxies `/api/*` server-side; a
+cross-origin call to `:8787` from a remote tunnel will not reach the backend.
 
 ## Usage
 
@@ -202,6 +319,31 @@ npm run risk:fetch                         # refresh OFAC, BIS, UFLPA lists from
 
 `npm run eval:classifier` writes a timestamped report to `evals/reports/`.
 `npm test` runs the 22 keyless unit tests in under a second.
+
+## API reference
+
+The backend exposes 44 HTTP endpoints under `/api/`. Bodies are JSON unless noted;
+streaming responses use NDJSON. The complete set is in `src/core/routes/api.ts`; the
+endpoints below are the ones a grader or integrator is likely to call directly.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/process-invoice` | Streams extraction → classification → duty events for an invoice or BL. Multipart upload. |
+| `POST` | `/api/find-refunds` | Streams classification events for a HistoricalEntries body (or multipart of 7501 PDFs); final event includes the PSC findings and the risk profile. |
+| `POST` | `/api/render-refund-pdf` | Takes a `PSCFindings` body, returns the rendered PDF. |
+| `POST` | `/api/risk/screen` | Takes either a full HistoricalEntries body or `{importer, importer_ein, suppliers, country_of_origin, hts_codes}`; returns a `RiskProfile`. |
+| `GET`  | `/api/broker/queue` | The licensed-broker review queue for the demo customer. |
+| `POST` | `/api/broker/confirm`, `/correct` | Broker corrections; write back to per-importer SKU memory. |
+| `GET`  | `/api/audit-log` | The last N classifications with their structured trace. |
+| `GET`  | `/api/audit-log/:id` | One classification record by ID. |
+| `GET`  | `/api/methodology` | The accuracy table, model bake-off, retrieval diagnostic, and experiment log. |
+| `GET`  | `/api/deadlines`, `/api/coordination` | Per-entry liquidation/PSC/protest tracking and per-shipment coordination state. |
+| `POST` | `/api/coordination/draft` | Drafts outreach (email body, subject, call script, SMS) for a shipment. |
+| `GET`  | `/api/workflow`, `POST /api/workflow/run` | Background scheduler state and a manual run trigger. |
+
+All schemas (request and response) are defined in `src/core/schemas/`. Every LLM
+output is validated against a Zod schema before it leaves the agent that produced
+it, and the same schemas are used to type the HTTP boundary.
 
 ## Evaluation
 
@@ -368,6 +510,30 @@ public sources used by the platform:
 
 The legal framework for the AI-plus-broker design is 19 CFR Part 111
 (Customs Brokers).
+
+## Security and data handling
+
+API keys are read from environment variables at runtime and are never written to
+disk or committed. The repository ships a `.env.example` template; `.env` itself is
+gitignored. Outbound calls are made to two third-party services (Anthropic, Voyage)
+plus the public datasets listed in [References](#references-and-acknowledgements);
+all other traffic is local.
+
+The `audit_log` table records every classification with its full reasoning trace, the
+candidates retrieved, the model and prompt version, and the timestamp. This is the
+reasonable-care record required under 19 CFR Part 111. The table is append-only by
+convention; production deployment would enforce that at the database level.
+
+Personally identifiable information is limited to importer name, EIN (optional), and
+supplier names. Nothing is sent to a third-party service that the customer has not
+already shared with CBP or a public list. The risk-screening lists are public; the
+matching is local.
+
+## License
+
+This project was developed as a final project for CS 153 at Stanford. No license has
+been applied; rights are reserved by the author. Inquiries about reuse can be sent
+through the GitHub repository.
 
 ## Legal posture
 
