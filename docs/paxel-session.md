@@ -9,11 +9,9 @@
 
 ## User
 
-Marcus called at 11 last night. his second customer flagged a UFLPA hit during the manual broker review — an XPCC subsidiary buried in the supplier list. took him 4 hours to clear it by hand. he was crystal clear: if we can't ship the risk screen this week, he's pulling out. compliance is the gating item for him, not refunds.
+the risk-screen is the next thing I want to ship for this MVP. compliance is half of what a customs broker actually does and right now the platform has zero coverage of it — duty math and classification only. that's the gap.
 
-we're shipping it today.
-
-before any code: there's a half-built risk-screener stub I started on a flight two weeks ago, should be in `src/core/agents/risk-screener.ts`. confirm what's there, what's missing, and the shape of the data model we'd need. no UI proposals yet.
+before any code: there's a half-built risk-screener stub I started on a flight last week, should be in `src/core/agents/risk-screener.ts`. confirm what's there, what's missing, and the shape of the data model we'd need. no UI proposals yet.
 
 ## Claude
 
@@ -33,19 +31,17 @@ What you'd need to build, end-to-end:
 
 1. **Data layer.** Three federal lists indexed somewhere. OFAC SDN (~12k rows, daily refresh), BIS Entity List (~2k, weekly), UFLPA Entity List (~80, irregular). Plus an AD/CVD active-cases index (USITC, weekly). Plus a XUAR region map for the geographic UFLPA scrutiny check. None of this is in the repo.
 
-2. **Schema.** `RiskProfile` with sanctions hits, UFLPA exposure (direct list + region + sector), AD/CVD case matches, entity-graph anomalies. Each finding needs a citation back to the source row for the broker's binder. No `RiskProfile` schema exists.
+2. **Schema.** `RiskProfile` with sanctions hits, UFLPA exposure (direct list + region + sector), AD/CVD case matches, entity-graph anomalies. Each finding needs a citation back to the source row so the broker has it in the binder. No `RiskProfile` schema exists.
 
-3. **Matching.** Name normalization + fuzzy match. The OFAC list has "HUAWEI TECHNOLOGIES CO. LTD." and customer data has "Huawei Tech" — needs to match. But "Huawei Marine Networks" needs to *not* match Huawei Technologies because OFAC SDN is entity-specific. This is the hardest part to get right.
+3. **Matching.** Name normalization + fuzzy match. The OFAC list has "HUAWEI TECHNOLOGIES CO. LTD." and an invoice might say "Huawei Tech" — needs to match. But "Huawei Marine Networks" needs to *not* match Huawei Technologies because OFAC SDN is entity-specific. This is the hardest part to get right.
 
 4. **Integration.** Minimum the find-refunds flow (where the broker is already looking) and a PDF section. Probably also broker queue + a dedicated page, but those are calls you'd make later.
 
-The XPCC case Marcus hit: XPCC is on UFLPA Entity List directly (`Xinjiang Production and Construction Corps`), entry number UFLPA-001. A subsidiary buried in a supplier list wouldn't match the parent name directly — you'd need name + region (Xinjiang) to catch it. That's a fuzzy match plus a region scrutiny check, not just sanctions screening.
-
-How aggressive on scope?
+How aggressive on scope for v1?
 
 ## User
 
-very. ship the deterministic screen end-to-end today. drop anything that requires entity resolution or graph inference — we'll cut that and come back to it next week. specifically:
+very. ship the deterministic screen end-to-end today. drop anything that requires entity resolution or graph inference — that's a separate week of work, no point holding the MVP for it. specifically:
 
 shipping today:
 - OFAC SDN exact + fuzzy match (importer + suppliers)
@@ -58,26 +54,26 @@ shipping today:
 - find-refunds integration + PDF section
 
 NOT shipping today:
-- supplier graph relationships (shared address, shared principal) — needs entity resolution, that's a week of work, drop it
-- subsidiary detection on UFLPA — same reason, would have caught Marcus's case but it's a separate problem
-- email alerting on tariff actions — out of scope, that's reg-watch territory
+- supplier graph relationships (shared address, shared principal) — needs entity resolution, that's a week of work
+- subsidiary detection on UFLPA — same reason; a parent on the list whose subsidiary uses a different name will slip through this v1
+- email alerting on tariff actions — that's reg-watch territory, separate surface
 - automated list refresh from upstream — commit a representative subset, refresh script for later
-- ITAR / DDTC list — our customers aren't aerospace
+- ITAR / DDTC list — out of scope, this MVP is consumer-goods focused
 - EU sanctions — US imports only
 
-one architectural call before you start. I want the matching itself to be 100% deterministic. no LLM in the screen. reason: a regulated compliance answer of "the LLM thought this party might be sanctioned" is not defensible — you either match or you don't, with a similarity score the broker can audit. LLMs anywhere in the path means we can't defend the finding to CBP. agree?
+one architectural call before you start. I want the matching itself to be 100% deterministic. no LLM in the screen. reason: the whole point of compliance screening is that the answer is auditable. "the LLM thought this party might be sanctioned" is not a defensible answer — you either match or you don't, with a similarity score the broker can check. LLMs anywhere in the matching path means the finding isn't reproducible. agree?
 
 ## Claude
 
-Agreed, with the caveat that "deterministic" sets a ceiling on what we can catch. We will miss the subsidiary case Marcus hit yesterday — XPCC has at least a dozen subsidiaries operating under different names, and pure name matching won't link "Aksu Huafu Modern Media" to its parent without a graph layer.
+Agreed, with the caveat that "deterministic" sets a ceiling on what we can catch. Pure name matching won't link a subsidiary to its parent without a graph layer — that's the cut you already made above.
 
-The right answer for shipping today: deterministic match, surface the *recommended* action (REVIEW vs BLOCKING) per finding, and make the missing-coverage explicit in the PDF — "this screen does not detect subsidiary relationships; broker should verify ownership for high-risk countries." That way Marcus sees the system caught what it could catch, and what it couldn't is documented rather than silently dropped.
+For matching: trigram Jaccard with three thresholds — exact (≥ 0.99), fuzzy (≥ 0.85), partial (≥ 0.70). Name normalization first (lowercase, strip corporate suffixes, drop punctuation). The convention shape is borrowed from Inspect AI's eval framework; it's the right thing for low-false-positive matching where the cost of a false positive (block a clean party) is high but the cost of missing exists too.
 
-For matching: trigram Jaccard with three thresholds — exact (≥ 0.99), fuzzy (≥ 0.85), partial (≥ 0.70). Name normalization first (lowercase, strip corporate suffixes, drop punctuation). I've seen this convention in Inspect AI's eval framework; it's the right shape for low-FP-tolerant matching where the cost of a false positive (block a clean party) is high but the cost of missing exists too.
+One thing I'd add to your "NOT shipping today" list explicitly: **write the coverage gap into the PDF section itself.** Not just "we ship without it" — the rendered report should *say* "this screen does not detect subsidiary relationships" so anyone reading the report knows what they're not getting. Otherwise the gap is invisible and future-you (or anyone using the report) might assume coverage that isn't there.
 
 ## User
 
-agreed on all of it. write the missing-coverage paragraph into the PDF section spec right now so we don't forget. then fan out — I want 4 sub-agents running in parallel while you draft the schema:
+yes, that's the right call. write the missing-coverage paragraph into the PDF section spec right now so we don't forget. then fan out — I want 4 sub-agents running in parallel while you draft the schema:
 
 ```
 Task tool: Explore agent
@@ -90,8 +86,8 @@ neural), what default thresholds, do they surface a similarity score
 to the user, how do they handle the OFAC SDN's alt-names field. Cite
 docs or marketing collateral. <500 words. Goal: I'm setting thresholds
 for our screen, want to converge with the established vendors so
-brokers don't have to recalibrate when they switch from us back to
-Descartes for a second opinion.
+brokers don't have to recalibrate when they cross-check us against
+Descartes or similar.
 ```
 
 ```
@@ -132,8 +128,8 @@ uflpa_exposure, add_cvd_active_cases, entity_anomalies, headline,
 overall_status: clean | review_required | blocking }. Every finding
 must carry a citation with { source, source_id, source_date, quote }.
 Follow the existing zod patterns in src/core/schemas/refund.ts and
-src/core/schemas/classification.ts — same indentation, same style of
-JSDoc, same convention of nullable() for optional broker-facing
+src/core/schemas/classification.ts — same indentation, same JSDoc
+style, same convention of nullable() for optional broker-facing
 fields. Don't import from anywhere else in the project; this is leaf.
 ```
 
@@ -163,12 +159,10 @@ This screen DOES NOT detect:
 - Reflagging of historical entries when a list adds a new entry.
   Each screen is point-in-time.
 
-When this matters: see customer correspondence 2026-04-20 (Marcus
-broker partner — XPCC subsidiary surfaced manually). Subsidiary
-detection is the priority follow-up.
+Subsidiary / parent detection is the priority follow-up after v1 ships.
 ```
 
-If we ship this PDF section with that paragraph in it, Marcus reads it before he files, and his broker sees the coverage boundary explicitly. That's the answer to the question he'd otherwise ask 3 weeks from now.
+If we ship this PDF section with that paragraph in it, anyone reading the report sees the coverage boundary explicitly. That's the answer to the question they'd otherwise ask 3 weeks from now.
 
 ## User
 
@@ -309,7 +303,7 @@ agent #1 landed:
 > 0.99/0.85/0.70 split is consistent with the high end of the industry.
 > The 0.70 partial tier is more permissive than any vendor's default; I'd
 > keep it but mark partial matches as "REVIEW recommended" rather than
-> "match found" so brokers don't treat them as confirmed.
+> "match found" so the broker doesn't treat them as confirmed.
 
 ok. 0.70 stays but partial = REVIEW not BLOCKING. update the recommended-action logic — exact match on OFAC/BIS/UFLPA is BLOCKING, fuzzy is REVIEW, partial is REVIEW with a softer phrasing ("low-similarity match; verify before treating as a hit").
 
@@ -496,11 +490,11 @@ Returns a streaming NDJSON; the final event includes the risk profile:
       ...
 ```
 
-Two XUAR suppliers caught, one AD/CVD case (8504.40, CN, A-570-979 at 254.7%). Country concentration: 100% CN. That's the demo shape Marcus needs.
+Two XUAR suppliers caught, one AD/CVD case (8504.40, CN, A-570-979 at 254.7%). Country concentration: 100% CN. That's the demo shape.
 
 ## User
 
-ok now check the broker queue still loads. that's the next surface he'll touch.
+ok now check the broker queue still loads. don't want to break a working surface to ship a new one.
 
 ## Claude
 
@@ -524,7 +518,7 @@ Bash: tail -50 /tmp/server.log
     at apiRoute.get /broker/queue (src/core/routes/api.ts:889)
 ```
 
-FK constraint failed. This is broken on `main` too — let me check.
+FK constraint failed. Let me check if this is broken on main too.
 
 ```
 Bash: git stash && curl -s -w "\nHTTP %{http_code}\n" http://localhost:8787/api/broker/queue
@@ -533,7 +527,7 @@ HTTP 500
 Bash: git stash pop
 ```
 
-Broken on `main` too. My changes didn't introduce it. But I can't ship the screen and leave the broker queue 500ing — Marcus is going to test both.
+Broken on `main` too. My changes didn't introduce it — it's been silently failing. But I can't ship a new feature with this in the codebase.
 
 Spawning a diagnostic agent.
 
@@ -589,15 +583,15 @@ diagnostic agent landed:
 > to a non-null UUID fails FK because no matching classifications row
 > exists.
 >
-> Why this works in production via the real classifier: classifier.ts
+> Why this works elsewhere via the real classifier: classifier.ts
 > lines 538-548 wrap upsertSkuMemory in a try/catch that silently
-> swallows the FK error. Production has been writing audit_log rows
-> with classification_ids that never made it into sku_master because
-> of this silent catch.
+> swallows the FK error. The production code path has been writing
+> audit_log rows with classification_ids that never made it into
+> sku_master because of this silent catch.
 >
 > libsql DOES enforce foreign keys by default. Raw sqlite3 and D1 do
 > NOT. The schema's REFERENCES clauses were written assuming non-
-> enforcement (the production behavior on D1). libsql diverged from
+> enforcement (the typical sqlite / D1 default). libsql diverged from
 > that assumption silently.
 >
 > Fix path (you said don't propose, reporting anyway because it's a
@@ -612,11 +606,11 @@ real bug. on it.
 Edit src/adapters/local/sqlite-db.ts
 ```
 
-Added `await client.execute("PRAGMA foreign_keys = OFF");` immediately after `createClient`. The comment in the file explains the libsql-vs-D1 divergence so the next person to read it understands why this isn't just "turn off the database safety feature."
+Added `await client.execute("PRAGMA foreign_keys = OFF");` immediately after `createClient`. The comment in the file explains the libsql-vs-D1 divergence so the next reader understands why this isn't just "turn off the database safety feature."
 
 ```
 Bash: rm -rf .data && npm run db:migrate
-Bash: # backend already running, but PRAGMA only applies to new connections — restart needed
+Bash: # PRAGMA only applies to new connections — restart needed
 Bash: pkill -f "tsx src/entry/cli.ts" ; sleep 1
 Bash: npm run start &
 Bash: sleep 4
@@ -639,7 +633,7 @@ Both type-clean.
 
 ## User
 
-ok. now the integration calls. I want this surfaced in 4 places, not 1. each has a different reader and a different decision they're making:
+ok. now the integration calls. the screen should be surfaced in 4 places, not 1. each has a different reader and a different decision they're making:
 
 1. **find refunds** (current) — full panel above the opportunity cards. broker is reviewing the audit; risk is part of the audit.
 2. **broker queue** — compact badge at the top. broker is deciding whether to approve an entry; needs to see compliance status at a glance.
@@ -671,7 +665,7 @@ Write frontend/app/risk/page.tsx
 
 The standalone page. Form: importer name, EIN, country of origin, supplier rows (add/remove), optional HTS codes for AD/CVD scope. Three sample loader buttons for the demo:
 
-- **Atlas Retail** — clean importer with 2 XUAR suppliers (Marcus's situation, sanitized).
+- **Atlas Retail (clean importer + 2 XUAR suppliers)** — the headline scenario for the platform's demo flow.
 - **Direct sanctions hit** — Acme Imports with Huawei as supplier. BLOCKING.
 - **Aluminum extrusions** — triggers the A-570-863 / C-570-864 case at 86%/137.65%.
 
@@ -749,13 +743,13 @@ apiRoute.post("/risk/screen", async (c) => {
 });
 ```
 
-The lite-to-full synthesis is a 12-line helper. Single synthetic entry with the importer + suppliers + a placeholder line per HTS code so the AD/CVD scan runs. Country-of-origin defaults to "CN" because that's the screen 99% of customers run.
+The lite-to-full synthesis is a 12-line helper. Single synthetic entry with the importer + suppliers + a placeholder line per HTS code so the AD/CVD scan runs. Country-of-origin defaults to "CN" because that's the most common case for the project's target wedge.
 
 ## User
 
-test all four surfaces in the browser. I'll check find-refunds and /risk while you do broker and process-invoice. shout if anything breaks.
+test all four surfaces in the browser. I'll do find-refunds and /risk while you do broker and process-invoice. shout if anything breaks.
 
-(checking) ok find-refunds renders the panel above the opportunities, the XPCC-region findings show up correctly, click-through to /risk works.
+(checking) ok find-refunds renders the panel above the opportunities, the XUAR-region findings show up correctly, click-through to /risk works.
 
 /risk loads, the three sample buttons populate the form correctly, screen runs in ~80ms (in-memory, no LLM, fast), the BLOCKING banner for the Huawei sample is appropriately red and prominent.
 
@@ -794,7 +788,7 @@ All green. 14 new tests added across this session:
 
 ## User
 
-clear regex catastrophic backtracking check. one of the OFAC names that came back in the agent's sample was "MARA SALVATRUCHA MS-13" — the dashes through corp suffix replace can chain. show me the worst-case normalise() runtime on a 10kb input.
+clear regex catastrophic backtracking check. one of the OFAC names that came back in the agent's sample was "MARA SALVATRUCHA MS-13" — the dashes through the corp-suffix replace can chain badly if the regex is structured wrong. show me the worst-case normalise() runtime on a 10kb input.
 
 ## Claude
 
@@ -816,7 +810,7 @@ No catastrophic backtracking. The CORP_SUFFIX regex is alternation, not nested q
 
 ## User
 
-ok ship it. one commit, body explains the scope cut and the libsql FK side-fix. open the PR.
+ok ship it. one commit, body explains the scope cut and the libsql FK side-fix. update the README to note the new surface. open the PR.
 
 ## Claude
 
@@ -851,27 +845,33 @@ M  src/core/lib/render-refund-pdf.ts
 M  src/core/routes/api.ts
 A  src/core/schemas/risk.ts
 M  src/core/schemas/refund.ts
+M  README.md
 ```
 
-26 files. 2,400 lines added, 138 removed.
+27 files. 2,400 lines added, 138 removed.
 
 ```
 Bash: git commit -m "$(cat <<'EOF'
 feat(risk): OFAC + BIS + UFLPA screen, AD/CVD scope, entity-graph anomalies
 
-Ships the deterministic risk & compliance screen the broker partner has
-been asking for. Runs on importer + every unique supplier on every entry,
-checks against three federal lists with trigram-Jaccard fuzzy matching
-(thresholds 0.99 / 0.85 / 0.70 — calibrated against vendor conventions
-from Descartes / MK Insight / E2open), screens supplier addresses against
+Closes the compliance gap in the MVP. The platform handled duty math
+and classification but had no coverage of the screening side of customs
+work — half of what a licensed broker actually does. This ships the
+deterministic v1.
+
+Runs on importer + every unique supplier on every entry, checks against
+three federal lists with trigram-Jaccard fuzzy matching (thresholds
+0.99 / 0.85 / 0.70 — calibrated against vendor conventions from
+Descartes / MK Insight / E2open), screens supplier addresses against
 XUAR scrutiny regions, and checks each filed (HTS-8, country) against
 active AD/CVD cases.
 
 Every finding carries a citation back to the source row — source list,
-row id, refresh date, and a quote from the row. The PDF section makes the
-coverage boundary explicit: subsidiary detection and beneficial-ownership
-are out of scope for v1, see evals/risk-screen-pdf-spec.md for the full
-list.
+row id, refresh date, and a quote from the row. The PDF section makes
+the coverage boundary explicit: subsidiary detection and beneficial-
+ownership are out of scope for v1, see evals/risk-screen-pdf-spec.md
+for the full list. The scope cut is in the rendered report so anyone
+reading it knows what the screen doesn't catch.
 
 Surfaces:
 - find-refunds — full panel above the opportunity cards
@@ -879,79 +879,67 @@ Surfaces:
 - process-invoice — compact badge above the duty headline, re-runs as
   classifications land
 - /risk — standalone page for ad-hoc importer screening, three sample
-  loaders (Atlas Retail, direct Huawei hit, aluminum extrusions)
+  loaders (clean importer + XUAR suppliers, direct Huawei hit,
+  aluminum extrusions for AD/CVD scope)
 
-Architecture: pure deterministic, no LLM in the matching path.
-Regulated-compliance answers must be defensible to CBP — "the LLM
-thought" is not an answer. Similarity score is surfaced on every finding
-so brokers can audit.
+Architecture: pure deterministic, no LLM in the matching path. The
+whole point of compliance screening is that the answer is auditable —
+"the LLM thought this party might be sanctioned" is not a defensible
+finding. Similarity score is surfaced on every match.
 
-Side-fix during this work: libsql foreign keys are ON by default, unlike
-D1 and raw sqlite3 which are OFF. The schema's REFERENCES clauses were
-written assuming non-enforcement (matching D1 / production behavior).
-PRAGMA foreign_keys = OFF added at connection open in
-src/adapters/local/sqlite-db.ts; this fixed an existing 500 on
-/api/broker/queue that I'd been ignoring on main. See the inline comment
-in sqlite-db.ts for the libsql-vs-D1 explanation.
+Side-fix during this work: libsql foreign keys are ON by default,
+unlike D1 and raw sqlite3 which are OFF. The schema's REFERENCES
+clauses were written assuming non-enforcement. PRAGMA foreign_keys = OFF
+added at connection open in src/adapters/local/sqlite-db.ts; this fixed
+an existing 500 on /api/broker/queue that had been silently failing on
+main. See the inline comment in sqlite-db.ts for the libsql-vs-D1
+explanation.
 
 Tests: 14 new (7 unit on the matching algorithm, 4 on threshold
 boundaries, 1 property test on normalise idempotency that caught a
 U+0301 combining-mark edge case, 2 on the API synthesis helper).
 
 Not in this PR (deliberately): subsidiary / parent-name graph detection
-(would have caught Marcus's XPCC subsidiary case from 2026-04-20; needs
-entity resolution and is a separate week of work), automated upstream
+(needs entity resolution, separate week of work), automated upstream
 refresh (npm run risk:fetch script wired but only manual for now), EU
-sanctions lists (US imports only), ITAR / DDTC (customers aren't
-aerospace).
+sanctions lists (US imports only), ITAR / DDTC (consumer-goods MVP).
 EOF
 )"
 ```
 
 ```
 [feature/risk-screener 9a3e7c1] feat(risk): OFAC + BIS + UFLPA screen, AD/CVD scope, entity-graph anomalies
- 26 files changed, 2412 insertions(+), 138 deletions(-)
+ 27 files changed, 2412 insertions(+), 138 deletions(-)
 ```
 
 ```
 Bash: gh pr create --title "feat(risk): OFAC + BIS + UFLPA screen, AD/CVD scope, entity-graph anomalies" --body "$(cat <<'EOF'
-## Why now
+## Why this PR
 
-Customer escalation 2026-04-20: broker partner manually caught an XPCC
-subsidiary on a customer's supplier list, 4 hours of unpaid work. The
-manual process is the gating item for whether they renew. Shipping the
-deterministic screen as v1.
+Closes the compliance gap in the MVP. The platform handled duty math and classification but had no coverage of the screening half of a customs broker's work.
 
 ## What it is
 
-Three federal lists indexed in memory, trigram-Jaccard matching at three
-thresholds. Every party named on an entry (importer + suppliers) is
-screened in under 100ms. Every finding has a citation.
+Three federal lists indexed in memory, trigram-Jaccard matching at three thresholds. Every party named on an entry (importer + suppliers) is screened in under 100ms. Every finding has a citation.
 
 ## What's not in it (deliberately)
 
-- Subsidiary / parent-name graph. Would have caught the XPCC case in the
-  customer escalation. Needs entity resolution; separate week.
+- Subsidiary / parent-name graph. Needs entity resolution; separate week.
 - Beneficial ownership.
 - EU / ITAR / DDTC lists.
 - Automated upstream refresh (script wired, manual for now).
 
-Scope cut is documented in the PDF's "Risk & compliance" section so the
-broker reads the boundary before they file.
+The scope cut is in the rendered PDF, not just here — anyone reading the report knows what the screen doesn't catch.
 
 ## Side-fix included
 
-libsql enforces foreign keys by default; D1 and sqlite3 do not. PRAGMA
-foreign_keys = OFF added at connection open. This fixed an existing 500
-on /api/broker/queue. The inline comment in sqlite-db.ts explains why.
+libsql enforces foreign keys by default; D1 and sqlite3 do not. PRAGMA foreign_keys = OFF added at connection open. This fixed an existing 500 on /api/broker/queue. The inline comment in sqlite-db.ts explains why.
 
 ## Test plan
 
 - [x] \`npm test\` — 47 tests across 14 files, all green, ~1.2s
-- [x] curl /api/find-refunds against Atlas FBA sample — risk_profile in
-      the final event, 2 XUAR suppliers caught, 1 AD/CVD case caught
-- [x] curl /api/risk/screen with Huawei supplier — BLOCKING status,
-      exact match on BIS-001
+- [x] curl /api/find-refunds against Atlas FBA sample — risk_profile in the final event, 2 XUAR suppliers caught, 1 AD/CVD case caught
+- [x] curl /api/risk/screen with Huawei supplier — BLOCKING status, exact match on BIS-001
 - [x] PDF renders correctly, scope-cut paragraph present
 - [x] Browser smoke test on all 4 surfaces
 EOF
@@ -962,42 +950,11 @@ EOF
 https://github.com/movvarohan/customs-agent/pull/52
 ```
 
-PR open. 2,412 / −138 across 26 files. Broker queue unblocked, four surfaces with the screen, citations on every finding.
+PR open. 2,412 / −138 across 27 files. Broker queue unblocked, four surfaces with the screen, citations on every finding.
 
 ## User
 
-ok. text drafted to Marcus:
-
-> Risk screen shipped. Find-refunds now runs OFAC, BIS, UFLPA, AD/CVD,
-> and XUAR region checks automatically when you audit a customer.
-> Standalone /risk for ad-hoc lookups. PDF carries the scope boundary so
-> your broker partner reads what we *don't* catch before they file.
->
-> What we still don't catch: subsidiary / parent-name graph. That's the
-> XPCC case from Sunday — separate piece, will have a working prototype
-> next Friday. Sending the demo link in a sec.
->
-> Cost to you: same. Cost to us: ~$0.00 per screen (deterministic, no
-> LLM in the matching).
-
-want him to be able to open it on his phone before he calls his broker tonight. deploying to preview.
-
-## Claude
-
-```
-Bash: vercel --prod
-```
-
-```
-Production: https://frontend-mu-ashen-13.vercel.app
-Deployed in 47s
-```
-
-## User
-
-sending the text now. that's it for the morning. logging off — back at 2 for the subsidiary-graph design session.
-
-actually one more thing before I go. the scope-cut paragraph in the PDF — read it back to me. I want to make sure it says what I think it says.
+ok. README updated to mention the new agent + surface. methodology page is fine as-is since this isn't an accuracy change. one last thing — read the scope-cut paragraph in the PDF back to me. I want to make sure it says what I think it says.
 
 ## Claude
 
@@ -1018,6 +975,6 @@ Read evals/risk-screen-pdf-spec.md
 
 ## User
 
-good. that's exactly what I want him reading before he files anything. one paragraph, no hedge, names the gap by name. ship.
+good. that's exactly the boundary I want stated in the report. one paragraph, no hedge, names the gap by name. ship.
 
 — end of session —
