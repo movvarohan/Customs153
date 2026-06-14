@@ -9,7 +9,7 @@
 
 ## User
 
-the risk-screen is the next thing I want to ship for this MVP. compliance is half of what a customs broker actually does and right now the platform has zero coverage of it — duty math and classification only. that's the gap.
+the risk-screen is the next thing I want to ship for this MVP. compliance is half of what a customs broker actually does and right now the platform has zero coverage of it. duty math and classification only. that's the gap.
 
 before any code: there's a half-built risk-screener stub I started on a flight last week, should be in `src/core/agents/risk-screener.ts`. confirm what's there, what's missing, and the shape of the data model we'd need. no UI proposals yet.
 
@@ -41,27 +41,27 @@ How aggressive on scope for v1?
 
 ## User
 
-very. ship the deterministic screen end-to-end today. drop anything that requires entity resolution or graph inference — that's a separate week of work, no point holding the MVP for it. specifically:
+very. ship the deterministic screen end-to-end today. drop anything that requires entity resolution or graph inference, that's a separate week of work, no point holding the MVP for it. specifically:
 
 shipping today:
 - OFAC SDN exact + fuzzy match (importer + suppliers)
 - BIS Entity List exact + fuzzy
 - UFLPA Entity List exact + fuzzy
-- UFLPA region scrutiny (geographic — supplier address in XUAR)
+- UFLPA region scrutiny (geographic; supplier address in XUAR)
 - AD/CVD scope check (HTS code × country)
 - one-line entity anomaly: country concentration ≥ 90% (cheap, useful)
 - citations on every finding pointing to the source row
 - find-refunds integration + PDF section
 
 NOT shipping today:
-- supplier graph relationships (shared address, shared principal) — needs entity resolution, that's a week of work
-- subsidiary detection on UFLPA — same reason; a parent on the list whose subsidiary uses a different name will slip through this v1
-- email alerting on tariff actions — that's reg-watch territory, separate surface
-- automated list refresh from upstream — commit a representative subset, refresh script for later
-- ITAR / DDTC list — out of scope, this MVP is consumer-goods focused
-- EU sanctions — US imports only
+- supplier graph relationships (shared address, shared principal). needs entity resolution, that's a week of work
+- subsidiary detection on UFLPA. same reason; a parent on the list whose subsidiary uses a different name will slip through this v1
+- email alerting on tariff actions. that's reg-watch territory, separate surface
+- automated list refresh from upstream. commit a representative subset, refresh script for later
+- ITAR / DDTC list. out of scope, this MVP is consumer-goods focused
+- EU sanctions. US imports only
 
-one architectural call before you start. I want the matching itself to be 100% deterministic. no LLM in the screen. reason: the whole point of compliance screening is that the answer is auditable. "the LLM thought this party might be sanctioned" is not a defensible answer — you either match or you don't, with a similarity score the broker can check. LLMs anywhere in the matching path means the finding isn't reproducible. agree?
+one architectural call before you start. I want the matching itself to be 100% deterministic. no LLM in the screen. reason: the whole point of compliance screening is that the answer is auditable. "the LLM thought this party might be sanctioned" is not a defensible answer. you either match or you don't, with a similarity score the broker can check. LLMs anywhere in the matching path means the finding isn't reproducible. agree?
 
 ## Claude
 
@@ -73,7 +73,7 @@ One thing I'd add to your "NOT shipping today" list explicitly: **write the cove
 
 ## User
 
-yes, that's the right call. write the missing-coverage paragraph into the PDF section spec right now so we don't forget. then fan out — I want 4 sub-agents running in parallel while you draft the schema:
+yes, that's the right call. write the missing-coverage paragraph into the PDF section spec right now so we don't forget. then fan out. I want 4 sub-agents running in parallel while you draft the schema:
 
 ```
 Task tool: Explore agent
@@ -95,13 +95,13 @@ Task tool: general-purpose agent
 
 Find the canonical upstream URLs for: OFAC SDN list (CSV), BIS Entity
 List (CSV via trade.gov consolidated screening list), UFLPA Entity
-List (DHS publishes a PDF; CSV doesn't exist upstream — describe what
+List (DHS publishes a PDF; CSV doesn't exist upstream, describe what
 fields a hand-extracted CSV should carry), and USITC's active AD/CVD
 case index. For each: URL, format, refresh cadence, auth required
 (should all be free / no auth), and field schema. Then download a
 representative sample (50-100 rows from OFAC, ~80 rows from BIS, the
 full ~80 UFLPA entries since the list is small) and write them as
-CSVs into data/risk/. Do NOT download the full lists — disk and PR
+CSVs into data/risk/. Do NOT download the full lists; disk and PR
 size matter; we'll add a fetch script for full refresh later.
 ```
 
@@ -114,7 +114,7 @@ and prefectures in XUAR (Xinjiang Uyghur Autonomous Region) are
 explicitly named as "regions of concern"? Which sectors are on the
 DHS priority enforcement list (cotton, polysilicon, tomatoes, etc.)?
 What is the standard CBP language for "broker should request supply-
-chain documentation" — quote the exact phrase. Output: a JSON-shaped
+chain documentation". quote the exact phrase. Output: a JSON-shaped
 list ready to write as data/risk/uflpa-regions.json.
 ```
 
@@ -128,7 +128,7 @@ uflpa_exposure, add_cvd_active_cases, entity_anomalies, headline,
 overall_status: clean | review_required | blocking }. Every finding
 must carry a citation with { source, source_id, source_date, quote }.
 Follow the existing zod patterns in src/core/schemas/refund.ts and
-src/core/schemas/classification.ts — same indentation, same JSDoc
+src/core/schemas/classification.ts. same indentation, same JSDoc
 style, same convention of nullable() for optional broker-facing
 fields. Don't import from anywhere else in the project; this is leaf.
 ```
@@ -230,7 +230,7 @@ The federal-register notice numbers in the BIS file are real. The agent didn't f
 
 ok that's the kind of work I expected from that agent. push on.
 
-agents #1 and #3 still out — keep building. start the data loader and the matcher. I want to see the property tests before you wire to PSC finder.
+agents #1 and #3 still out. keep building. start the data loader and the matcher. I want to see the property tests before you wire to PSC finder.
 
 ## Claude
 
@@ -305,9 +305,9 @@ agent #1 landed:
 > keep it but mark partial matches as "REVIEW recommended" rather than
 > "match found" so the broker doesn't treat them as confirmed.
 
-ok. 0.70 stays but partial = REVIEW not BLOCKING. update the recommended-action logic — exact match on OFAC/BIS/UFLPA is BLOCKING, fuzzy is REVIEW, partial is REVIEW with a softer phrasing ("low-similarity match; verify before treating as a hit").
+ok. 0.70 stays but partial = REVIEW not BLOCKING. update the recommended-action logic: exact match on OFAC/BIS/UFLPA is BLOCKING, fuzzy is REVIEW, partial is REVIEW with a softer phrasing ("low-similarity match; verify before treating as a hit").
 
-also alt-names: BIS has them, OFAC has them, UFLPA doesn't. when we have alt-names, we should match against each one separately and report which one hit. agent missed that in the schema — add it.
+also alt-names: BIS has them, OFAC has them, UFLPA doesn't. when we have alt-names, we should match against each one separately and report which one hit. agent missed that in the schema, add it.
 
 ## Claude
 
@@ -325,7 +325,7 @@ Edit src/core/lib/risk-data.ts
 
 ## User
 
-agent #3 landed (UFLPA regions). looks correct — XUAR cities are right, the four sublists are right, the labor-transfer destinations have the right cities (Bengbu, Xiangyang, Houjie). use it.
+agent #3 landed (UFLPA regions). looks correct. XUAR cities are right, the four sublists are right, the labor-transfer destinations have the right cities (Bengbu, Xiangyang, Houjie). use it.
 
 ok property tests now.
 
@@ -538,7 +538,7 @@ Task tool: general-purpose agent
 
 The broker queue endpoint at /api/broker/queue is returning 500 with
 "SQLITE_CONSTRAINT_FOREIGNKEY: FOREIGN KEY constraint failed". This is
-NOT introduced by recent changes — it's broken on main. Stack points
+NOT introduced by recent changes; it's broken on main. Stack points
 at src/core/lib/seed-classification-traces.ts:353 which is doing an
 INSERT into audit_log followed by an UPDATE on sku_master to set
 sku_master.current_classification_id.
@@ -546,7 +546,7 @@ sku_master.current_classification_id.
 Investigate ONLY: which FK is failing, why, and is libsql's FK
 enforcement different from raw SQLite or D1's? Read the schema in
 migrations/0001_initial.sql. Look at how the real classifier (NOT the
-seed) handles the same INSERT/UPDATE pattern — does it work in
+seed) handles the same INSERT/UPDATE pattern. does it work in
 production? If yes, what's different?
 
 Report findings, do not propose a fix.
@@ -635,10 +635,10 @@ Both type-clean.
 
 ok. now the integration calls. the screen should be surfaced in 4 places, not 1. each has a different reader and a different decision they're making:
 
-1. **find refunds** (current) — full panel above the opportunity cards. broker is reviewing the audit; risk is part of the audit.
-2. **broker queue** — compact badge at the top. broker is deciding whether to approve an entry; needs to see compliance status at a glance.
-3. **process invoice** — same compact badge. importer is filing a new shipment; needs to see exposure before the file moves.
-4. **standalone /risk page** — for ad-hoc screening. someone wants to check a supplier *before* there's an audit or a shipment.
+1. **find refunds** (current): full panel above the opportunity cards. broker is reviewing the audit; risk is part of the audit.
+2. **broker queue**: compact badge at the top. broker is deciding whether to approve an entry; needs to see compliance status at a glance.
+3. **process invoice**: same compact badge. importer is filing a new shipment; needs to see exposure before the file moves.
+4. **standalone /risk page**: for ad-hoc screening. someone wants to check a supplier *before* there's an audit or a shipment.
 
 extract a shared component. don't duplicate the panel three times.
 
@@ -788,7 +788,7 @@ All green. 14 new tests added across this session:
 
 ## User
 
-clear regex catastrophic backtracking check. one of the OFAC names that came back in the agent's sample was "MARA SALVATRUCHA MS-13" — the dashes through the corp-suffix replace can chain badly if the regex is structured wrong. show me the worst-case normalise() runtime on a 10kb input.
+clear regex catastrophic backtracking check. one of the OFAC names that came back in the agent's sample was "MARA SALVATRUCHA MS-13"; the dashes through the corp-suffix replace can chain badly if the regex is structured wrong. show me the worst-case normalise() runtime on a 10kb input.
 
 ## Claude
 
@@ -954,7 +954,7 @@ PR open. 2,412 / −138 across 27 files. Broker queue unblocked, four surfaces w
 
 ## User
 
-ok. README updated to mention the new agent + surface. methodology page is fine as-is since this isn't an accuracy change. one last thing — read the scope-cut paragraph in the PDF back to me. I want to make sure it says what I think it says.
+ok. README updated to mention the new agent + surface. methodology page is fine as-is since this isn't an accuracy change. one last thing: read the scope-cut paragraph in the PDF back to me. I want to make sure it says what I think it says.
 
 ## Claude
 
